@@ -18,6 +18,7 @@ www/
 
 # Ignore environment-specific files
 .env
+.env.yaml
 .env.local
 .env.*.local
 

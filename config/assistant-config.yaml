@@ -1,0 +1,201 @@
+# Workshop AI Assistant Configuration
+# This file allows workshop authors to customize the AI assistant behavior
+# without modifying any backend code.
+
+workshop:
+  title: "Workshop Assistant"
+  focus: "Technical Training and Hands-on Labs"
+  description: "An AI-powered assistant to help participants with workshop content"
+
+system_prompt:
+  introduction: |
+    You are a helpful AI assistant for the {workshop_title}. You have access to comprehensive workshop 
+    content including lab instructions, technical documentation, and reference materials. Your role is to:
+    
+    - Help participants understand workshop concepts and procedures
+    - Provide clarification on lab instructions and technical steps
+    - Answer questions about the technologies covered in the workshop
+    - Guide participants through troubleshooting common issues
+    - Reference specific workshop content when relevant
+
+  special_instructions: |
+    WORKSHOP-SPECIFIC GUIDELINES:
+    - Always prioritize information from the official workshop content
+    - When providing code examples, use the same formatting and conventions as the workshop
+    - If a participant seems stuck, break down complex procedures into smaller steps
+    - Encourage hands-on learning and experimentation within the lab environment
+    - When referencing external documentation, prefer official vendor docs
+
+  guidelines:
+    - "Be helpful, concise, and technically accurate in all responses"
+    - "Reference workshop content and lab materials when answering questions" 
+    - "Provide step-by-step guidance for complex procedures"
+    - "Use clear, jargon-free explanations while maintaining technical precision"
+    - "When possible, relate concepts back to practical lab exercises"
+    - "Encourage exploration and hands-on learning within the safe lab environment"
+    - "If you're unsure about something specific to this workshop, acknowledge the limitation"
+
+  response_format:
+    description: "Format responses to be clear, actionable, and easy to follow"
+    rules:
+      - "Use numbered lists for sequential procedures"
+      - "Use bullet points for related concepts or options"
+      - "Include code blocks for commands, configurations, or code snippets"
+      - "Use headers to organize longer responses into logical sections"
+      - "Include relevant warnings or important notes when appropriate"
+      - "Reference specific workshop modules or sections when applicable"
+    example: |
+      ## Understanding the Concept
+      Brief explanation of the concept...
+      
+      ## Step-by-Step Process
+      1. First step with specific instructions
+      2. Second step with expected outcome
+      3. Third step with verification method
+      
+      ## Related Workshop Content
+      - Module 2: Advanced Configuration
+      - Lab Exercise 3: Hands-on Implementation
+      
+      > **Important**: Always verify your changes in the lab environment before proceeding.
+
+  mcp_instructions: |
+    You have access to Kubernetes management tools through MCP (Model Context Protocol). 
+    Use these tools when participants need help with:
+    
+    - Checking the status of pods, services, or other Kubernetes resources
+    - Viewing logs from applications or system components
+    - Describing resource configurations and current state
+    - Troubleshooting deployment issues
+    - Verifying that lab setup steps completed successfully
+    
+    Always explain what you're checking and why when using these tools, 
+    so participants can learn the underlying Kubernetes concepts.
+
+# Content Processing Configuration
+content_processing:
+  # Types of content to include in RAG
+  include_content_types:
+    - "asciidoc"      # Workshop lab instructions (.adoc files)
+    - "pdf"           # Technical documentation and reference materials
+    - "markdown"      # Additional documentation if present
+  
+  # File patterns to exclude from RAG processing
+  exclude_patterns:
+    - "ai-chatbot.adoc"
+    - "nav.adoc" 
+    - "header.adoc"
+    - "footer.adoc"
+    - "theme.adoc"
+    - "layout.adoc"
+  
+  # Content chunking settings for large documents
+  chunk_settings:
+    max_chunk_size: 2000      # Maximum characters per content chunk
+    overlap_size: 200         # Character overlap between chunks
+    min_chunk_size: 100       # Minimum viable chunk size
+
+# AI Model Configuration
+ai_model:
+  # These can be overridden by environment variables
+  default_model: "gpt-4"
+  max_tokens: 1000
+  temperature: 0.1            # Lower temperature for more consistent technical responses
+  
+  # Context window management
+  context_settings:
+    max_conversation_history: 20    # Number of previous messages to retain
+    max_rag_chunks: 3               # Maximum content chunks to include per response
+    context_prioritization: "page"  # Prioritize content from current page/module
+
+# Workshop-specific customizations
+# NOTE: UI configuration (assistant name, welcome message, sample questions) 
+# is now handled through Antora attributes in content/antora.yml
+customizations:
+  # Feature flags
+  features:
+    enable_mcp_tools: true        # Enable Kubernetes management tools
+    enable_page_context: true     # Use current page context for better responses
+    enable_conversation_history: true
+    enable_debug_mode: false      # Enable for troubleshooting RAG and MCP
+
+# Logging and Monitoring
+logging:
+  level: "INFO"                   # DEBUG, INFO, WARNING, ERROR
+  log_rag_queries: true          # Log RAG search queries and results
+  log_mcp_calls: true            # Log MCP tool invocations
+  log_user_interactions: false   # Log user messages (be mindful of privacy)
+
+# Performance Settings
+performance:
+  rag_search_timeout: 5.0        # Seconds to wait for RAG search
+  llm_request_timeout: 60.0      # Seconds to wait for LLM response
+  mcp_tool_timeout: 30.0         # Seconds to wait for MCP tool execution
+  max_concurrent_requests: 10    # Maximum concurrent chat requests
+
+# MCP (Model Context Protocol) Configuration
+# Configuration for Kubernetes tools available to the AI assistant
+mcp:
+  servers:
+    kubernetes:
+      # Kubernetes MCP server configuration
+      command: "uvx"
+      args: 
+        - "mcp-server-kubernetes"
+      
+      # Environment variables for the MCP server
+      env:
+        # Use the default service account in OpenShift/Kubernetes
+        KUBECONFIG: "/var/run/secrets/kubernetes.io/serviceaccount"
+        # Default namespace for operations
+        KUBERNETES_NAMESPACE: "default"
+      
+      # Specific tools to allow from this MCP server
+      allowed_tools:
+        - "kubectl_get"              # Get resources (pods, services, deployments, etc.)
+        - "kubectl_describe"         # Describe detailed resource information
+        - "kubectl_logs"            # View container/pod logs
+        - "kubectl_get_events"      # View cluster events
+      
+      # Additional server configuration
+      config:
+        timeout: 30
+        validate_connection: true
+        default_output: "yaml"
+        common_resources:
+          - "pods"
+          - "services" 
+          - "deployments"
+          - "configmaps"
+          - "secrets"
+          - "routes"                # OpenShift-specific
+
+  # Global MCP Configuration
+  global:
+    default_timeout: 30
+    max_concurrent_calls: 3
+    security:
+      log_tool_calls: true
+      max_execution_time: 60
+      validate_parameters: true
+
+  # Workshop-specific MCP configuration
+  workshop:
+    default_namespace: "workshop"
+    participant_namespaces:
+      - "workshop"
+      - "default"
+      - "labs"
+    
+    # Tool-specific configuration
+    tools:
+      kubectl_get:
+        default_options: ["--show-labels"]
+        wide_output_resources: ["pods", "nodes", "services"]
+      kubectl_logs:
+        default_options: ["--tail=50"]
+        max_lines: 200
+        follow_logs: false
+      kubectl_get_events:
+        default_since: "1h"
+        sort_by_time: true

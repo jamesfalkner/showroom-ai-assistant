@@ -5,6 +5,8 @@ You are both free to change its value and if you prefer to use a different var n
 
 image::rhel-logo-black.jpg[rhel-logo-black,55%,55%]
 
+include::ai-chatbot.adoc[]
+
 == Variables
 
 Other vars can also be set there, such as `ssh_user` and `ssh_password`, and referenced inline in the lab content by using the `\{foo}` syntax.

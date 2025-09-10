@@ -1,0 +1,52 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ai-assistant-backend
+  labels:
+    app: ai-assistant
+    component: backend
+  annotations:
+    haproxy.router.openshift.io/timeout: 60s
+    haproxy.router.openshift.io/balance: roundrobin
+spec:
+  to:
+    kind: Service
+    name: ai-assistant-backend
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+
+---
+# For standard Kubernetes (non-OpenShift) environments, use Ingress instead:
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: ai-assistant-backend
+#   labels:
+#     app: ai-assistant
+#     component: backend
+#   annotations:
+#     nginx.ingress.kubernetes.io/rewrite-target: /
+#     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+#     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+#     cert-manager.io/cluster-issuer: letsencrypt-prod  # If using cert-manager
+# spec:
+#   tls:
+#   - hosts:
+#     - showroom-assistant.your-domain.com
+#     secretName: ai-assistant-tls
+#   rules:
+#   - host: showroom-assistant.your-domain.com
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: ai-assistant-backend
+#             port:
+#               number: 8080

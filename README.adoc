@@ -1,83 +1,357 @@
-=== Getting Started
+= Showroom AI Assistant Template
+:toc: left
+:toclevels: 3
+:sectanchors:
+:experimental:
 
-This template is designed to be used as a base for your showroom lab guides.
+A generic, reusable AI assistant template for Red Hat Showroom workshops, built on the foundation of the https://github.com/rhpds/showroom_template_default[standard Showroom template^]. This template provides an intelligent chatbot that can answer questions about workshop content, provide guidance on lab procedures, and assist with Kubernetes operations through MCP (Model Context Protocol) integration.
 
-The content is built using Antora, a static site generator for creating documentation sites from AsciiDoc documents.
+== ✨ Features
 
-This git repo template was created to make it easy for you to start developing your lab instructions.
+* **🤖 Intelligent Chat Assistant**: RAG-powered chatbot with access to workshop content
+* **📚 Content-Aware**: Automatically processes AsciiDoc lab instructions and PDF documentation  
+* **🔧 Kubernetes Integration**: Optional MCP tools for cluster operations and troubleshooting
+* **🎨 Modern UI**: Clean, responsive chat interface with workshop theming
+* **⚙️ Fully Configurable**: Externalized configuration for easy customization
+* **🚀 Easy Deployment**: Ready-to-use Kubernetes manifests and build scripts
+* **📖 Multi-Format Support**: Handles AsciiDoc, PDF, and Markdown content
+* **0% cruft**: Clean, minimal template structure
+* **Red Hat Demo Platform UI Bundle default**: Consistent branding and styling
+* **Dev Mode extension**: Displays asciidoc attributes for development
 
-Features:
+== 🚀 Getting Started for Workshop Authors
 
-. 0% cruft
-. Red Hat Demo Platform UI Bundle default
-. Dev Mode extension that displays the asciidoc attributes you have to work with
-. Content is generated using Antora, a static site generator for creating documentation sites from AsciiDoc documents.
+There are two ways to use this template:
 
-== Getting Started
+=== Path 1: Start with This Template (New Workshop)
 
-=== Using Containers (Recommended)
+This approach is for creating a new workshop from scratch with AI assistant capabilities built-in.
 
-In order to test and develop on your local machine, you can use a specially built container with Podman or Docker as follows.
-
-. Create a git repo from this template
+. **Create a git repo from this template**
 .. Suggested naming: `showroom_<lab-name>`
-. Clone your new repo and `cd` into it
-. When you make changes to the content, all you need is to kill the container and run it again.
+. **Clone your new repo and `cd` into it**
+. **Add your workshop content** to `content/modules/ROOT/pages/`
+. **Configure the AI assistant** (see <<Configuration Guide>>)
+. **Deploy your workshop** (see <<Deployment>>)
+
+=== Path 2: Add AI to Existing Workshop (Patch Approach)
+
+This approach is for adding AI assistant capabilities to an existing showroom workshop.
+
+. **Run the patch script** from this template repo:
 +
 [source,sh]
 ----
+./patch-existing-showroom.sh /path/to/your-existing-workshop
+----
+
+. **Configure the AI assistant** in your existing workshop:
++
+[source,sh]
+----
+cd /path/to/your-existing-workshop
+
+# Customize the AI assistant UI by editing content/antora.yml
+# Update these attributes with your workshop-specific values:
+#   assistant_name: "Your Assistant Name"
+#   workshop_title: "Your Workshop Title" 
+#   welcome_message: "Your custom welcome message"
+#   sample_question_1: "Your first sample question"
+#   sample_question_2: "Your second sample question"
+#   sample_question_3: "Your third sample question"
+
+# Configure the backend
+cp .env.yaml.example .env.yaml
+# Edit .env.yaml with your LLM API configuration
+# Edit config/assistant-config.yaml for workshop-specific AI behavior
+----
+
+. **Add technical documentation** (optional):
++
+[source,sh]
+----
+# Add PDF files to the techdocs directory created by the patch script
+cp your-docs.pdf content/modules/ROOT/assets/techdocs/
+----
+
+. **Deploy your enhanced workshop**:
++
+[source,sh]
+----
+# Build and deploy with AI backend
+./deploy-backend.sh --namespace your-namespace
+----
+
+The patch script copies the following to your existing workshop:
+
+* AI assistant frontend UI (chatbot interface)
+* Backend files (`backend/`, `config/`, `Dockerfile`, `.env.yaml.example`, `deploy-backend.sh`)
+* Sample workshop files for reference
+* Techdocs directory structure for PDF documentation
+
+== 📁 Project Structure
+
+[source,text]
+----
+showroom-ai-assistant/
+├── backend/                    # FastAPI backend service
+│   ├── app.py                 # Main application with RAG and MCP
+│   └── requirements.txt       # Python dependencies
+├── config/                    # Configuration files
+│   ├── assistant-config.yaml  # AI behavior and prompts
+│   └── mcp-config.yaml        # Kubernetes tools configuration
+├── content/                   # Workshop content
+│   ├── modules/ROOT/
+│   │   ├── pages/            # AsciiDoc lab instructions
+│   │   │   ├── index.adoc    # First page of your lab
+│   │   │   ├── module-01.adoc
+│   │   │   ├── module-02.adoc
+│   │   │   └── ai-chatbot.adoc    # AI assistant UI integration
+│   │   ├── assets/
+│   │   │   ├── images/       # Images used in your content
+│   │   │   └── techdocs/     # PDF documentation for RAG
+│   │   ├── examples/         # Downloadable assets
+│   │   └── partials/         # Reusable content
+│   ├── supplemental-ui/      # Chatbot UI files
+│   │   ├── css/
+│   │   └── js/
+│   ├── antora.yml           # Antora module configuration
+│   └── nav.adoc             # Navigation for your lab
+├── k8s/                      # Kubernetes deployment manifests
+├── .env.yaml.example         # Environment configuration template
+├── deploy-backend.sh                 # Deployment script
+├── patch-existing-showroom.sh # Script to add AI to existing workshops
+├── Dockerfile                # Container build configuration
+└── default-site.yml          # Antora site configuration
+----
+
+== 🧪 Local Development and Testing
+
+=== Using Containers (Recommended)
+
+For testing the static site content without the AI assistant:
+
+[source,sh]
+----
+# Start the Antora viewer container
 podman run --rm --name antora -v $PWD:/antora -p 8080:8080 -i -t ghcr.io/juliaaano/antora-viewer
 ----
 
-For SELinux environments, `:z` may need to be appended to the volume mount:
+For SELinux environments, append `:z` to the volume mount:
 
+[source,sh]
 ----
 podman run --rm --name antora -v $PWD:/antora:z -p 8080:8080 -i -t ghcr.io/juliaaano/antora-viewer
 ----
 
-Live-reload is not supported.
+Then open http://localhost:8080 in your browser.
 
-=== Using Local Files (Less Recommended)
+NOTE: Live-reload is not supported. You need to kill and restart the container when making changes.
 
-. Create a git repo from this template
-. Clone the repo and `cd` into it
-. Run ./utilities/lab-serve
-. Open http://localhost:8080 in your browser
-. Run ./utilities/lab-build to build your html
+=== Development Mode with AI Backend
 
-To rebuild your html, run `./utilites/build`.
-
-== Editing Files
-
-Now you are ready to go!
-You can start editing the files in the `content/modules/ROOT/pages/` directory.
-
-Many modern editors such as Visual Studio Code offer live Asciidoc Preview extensions.
-
-=== Understanding the Basic Template Directory Structure
+For full development including the AI assistant:
 
 [source,sh]
 ----
+# 1. Set up environment
+cp .env.yaml.example .env.yaml
+# Edit .env.yaml with your API keys
+
+# 2. Install backend dependencies
+pip install -r backend/requirements.txt
+
+# 3. Start the backend
+cd backend
+export LLM_API_KEY="your-api-key"
+export CONTENT_DIR="../content"
+python app.py
+
+# 4. In another terminal, build and serve the frontend
+npx antora default-site.yml
+cd www && python -m http.server 8080
+----
+
+== ⚙️ Configuration Guide
+
+=== Environment Variables (.env.yaml)
+
+Create a `.env.yaml` file from the template:
+
+[source,sh]
+----
+cp .env.yaml.example .env.yaml
+----
+
+**Required settings:**
+[source,yaml]
+----
+# LLM API Configuration
+llm_api_key: "your-openai-api-key"
+llm_api_url: "https://api.openai.com/v1/chat/completions"
+llm_model: "gpt-4"
+
+# Content paths (usually don't need to change)
+content_dir: "/app/content"
+pdf_dir: "/app/content/modules/ROOT/assets/techdocs"
+----
+
+=== Assistant Configuration (config/assistant-config.yaml)
+
+Customize the AI's behavior for your workshop:
+
+[source,yaml]
+----
+workshop:
+  title: "Your Workshop Name"
+  focus: "Technology Stack"
+
+system_prompt:
+  introduction: |
+    You are a helpful AI assistant for the {workshop_title}...
+  
+  guidelines:
+    - "Be helpful and technically accurate"
+    - "Reference workshop content when relevant"
+    - "Provide step-by-step guidance"
+
+customizations:
+  sample_questions:
+    - "What is the main objective of this workshop?"
+    - "How do I troubleshoot common issues?"
+    - "Walk me through the first module"
+----
+
+=== MCP Configuration (config/mcp-config.yaml)
+
+Configure Kubernetes tools available to the AI (optional):
+
+[source,yaml]
+----
+mcpServers:
+  kubernetes:
+    command: "uvx"
+    args: ["mcp-server-kubernetes"]
+    allowed_tools:
+      - "kubectl_get"      # View resources
+      - "kubectl_describe" # Detailed resource info
+      - "kubectl_logs"     # Container logs
+      - "kubectl_get_events" # Cluster events
+----
+
+== 🚀 Deployment
+
+The `deploy-backend.sh` script provides an automated way to deploy your workshop with AI assistant to Kubernetes/OpenShift.
+
+=== Deploy Script Usage
+
+[source,sh]
+----
+# Deploy to specific namespace (namespace is required)
+./deploy-backend.sh --namespace showroom-user1
+
+# Update configuration only (no rebuild)
+./deploy-backend.sh --namespace showroom-user1 --config-only
+
+# Deploy with content from a different workshop directory
+./deploy-backend.sh --content-source ../my-existing-workshop --namespace production
+----
+
+=== Deploy Script Options
+
+* `--namespace NS`: Specify target namespace (REQUIRED)
+* `--config-only`: Only update configuration, skip container build
+* `--content-source PATH`: Path to showroom repo for content (default: current directory)
+* `--help`: Show usage information
+
+=== What the Deploy Script Does
+
+. **Checks prerequisites**: Verifies `oc` or `kubectl` access
+. **Validates content**: Ensures proper workshop structure
+. **Builds static site**: Uses Antora to generate workshop HTML
+. **Builds backend image**: Creates container with AI assistant and content
+. **Creates secrets**: Sets up API keys from `.env.yaml`
+. **Creates ConfigMaps**: Deploys AI configuration
+. **Applies manifests**: Deploys all Kubernetes resources
+. **Monitors deployment**: Waits for pods to be ready
+
+=== Manual Deployment (Alternative)
+
+If you prefer manual control:
+
+. **Create secrets** (replace with your actual values):
++
+[source,sh]
+----
+kubectl create secret generic ai-assistant-secrets \
+  --from-literal=LLM_API_KEY="your-actual-api-key" \
+  --from-literal=LLM_API_URL="https://api.openai.com/v1/chat/completions" \
+  --from-literal=LLM_MODEL="gpt-4" \
+  --namespace=your-namespace
+----
+
+. **Deploy with Kustomize**:
++
+[source,sh]
+----
+kubectl apply -k k8s/
+----
+
+. **Verify deployment**:
++
+[source,sh]
+----
+kubectl get pods -n your-namespace
+kubectl get routes -n your-namespace  # OpenShift
+----
+
+== 🖊️ Editing and Customizing Your Workshop
+
+=== Adding Workshop Content
+
+You can start editing the files in the `content/modules/ROOT/pages/` directory:
+
+. **AsciiDoc Files**: Place your lab instructions here
+   * The AI will automatically process these for RAG
+   * Use standard AsciiDoc formatting
+   * See existing module files for examples
+
+. **PDF Documentation**: Place in `content/modules/ROOT/assets/techdocs/`
+   * Technical reference materials
+   * Architecture diagrams  
+   * External documentation
+
+. **Images and Assets**: Place in `content/modules/ROOT/assets/images/`
+
+Many modern editors such as Visual Studio Code offer live AsciiDoc Preview extensions.
+
+=== Understanding the Basic Template Directory Structure
+
+[source,text]
+----
 ./content/modules/ROOT/
 ├── assets
-│   └── images                       # Images used in your content
-│       └── example-image.png
+│   ├── images                       # Images used in your content
+│   │   └── example-image.png
+│   └── techdocs                     # PDF docs for AI assistant
+│       └── sample-documentation.pdf
 ├── examples                         # You can add downloadable assets here
 │   └── example-bash-script.sh       # e.g. an example bash script
 ├── nav.adoc                         # Navigation for your lab
 ├── pages                            # Your content goes here
 │   ├── index.adoc                   # First page of your lab, e.g. overview etc
 │   ├── module-01.adoc
-│   └── module-02.adoc               # Sample lab has 2 modules including index.adoc
+│   ├── module-02.adoc               # Sample lab has 2 modules including index.adoc
+│   └── ai-chatbot.adoc                   # AI assistant UI integration
 └── partials                         # You can add partials here, reusable content inserted inline into your modules
     └── example_partial.adoc
 ----
 
-== Adding Additional Links
+=== Adding Additional Links
 
-You can add links to external content in the convenient "Links" drop-down on the upper-right of the Showroom Summit 2024 UI.
+You can add links to external content in the convenient "Links" drop-down on the upper-right of the Showroom UI:
 
-../content/antora.yml
+.content/antora.yml
 [source,yaml]
 ----
 asciidoc:
@@ -87,14 +361,33 @@ asciidoc:
       text: Red Hat
 ----
 
-image::ui-links.png[]
+=== Customizing the AI Assistant UI
 
-== Dev Mode
+The AI assistant UI is customized through Antora attributes in your `content/antora.yml` file:
 
-As a convenience to developers, the Dev Mode Extention (disabled by default) displays the asciidoc attributes you have to work with while writing your lab instructions.
+[source,yaml]
+----
+asciidoc:
+  attributes:
+    # AI Assistant Configuration
+    assistant_name: "Your Custom Assistant Name"
+    workshop_title: "Your Workshop Title"
+    welcome_message: "Your personalized welcome message"
+    sample_question_1: "What technologies will we use?"
+    sample_question_2: "How do I set up my environment?"
+    sample_question_3: "Where can I find troubleshooting help?"
+----
 
-. Disable/Enable Dev Mode by changing `enabled: true` or `enabled: false`
-+
+**Additional customization:**
+* **Colors and themes**: Edit the CSS variables in `ai-chatbot.adoc` if needed
+* **Backend behavior**: Update `config/assistant-config.yaml` for AI personality and responses
+
+=== Dev Mode Extension
+
+As a convenience to developers, the Dev Mode Extension (disabled by default) displays the asciidoc attributes you have to work with while writing your lab instructions.
+
+Disable/Enable Dev Mode by changing `enabled: true` or `enabled: false`:
+
 .default-site.yml
 [source,yaml]
 ----
@@ -104,6 +397,115 @@ extensions:
     enabled: false
 ----
 
-. Produces
-+
-image::dev-mode.png[]
+== 🔧 Architecture
+
+=== Components
+
+. **Frontend**: Static Antora-generated site with embedded chatbot UI
+. **Backend**: FastAPI service with embedded RAG and MCP integration
+. **RAG Engine**: TF-IDF vectorization with cosine similarity search
+. **MCP Integration**: Kubernetes tools via Model Context Protocol
+
+=== Data Flow
+
+. User asks question in chat interface
+. Frontend sends request to backend API
+. Backend retrieves relevant content using RAG
+. LLM generates response with context and optional tool usage
+. Response streams back to user in real-time
+
+=== Security
+
+* API keys managed via Kubernetes Secrets
+* RBAC permissions limit Kubernetes access
+* Content processed locally (no external data exposure)
+* Optional tool restrictions via allowed_tools configuration
+
+== 📚 Usage Examples
+
+=== Basic Chat
+* "What is the main objective of this workshop?"
+* "How do I get started with the first lab?"
+* "Can you explain the architecture we're working with?"
+
+=== Kubernetes Troubleshooting (with MCP enabled)
+* "Check the status of my pods"
+* "Show me the logs for the failing deployment"
+* "What events happened in the last hour?"
+* "Describe the service configuration"
+
+=== Content-Specific Queries
+* "Walk me through Module 3 step by step"
+* "What should I do if I get a connection error?"
+* "Explain the networking concepts covered in this lab"
+
+== 🐛 Troubleshooting
+
+=== Common Issues
+
+**Chat not responding:**
+
+* Check backend pod logs: `kubectl logs -n your-namespace deployment/ai-assistant-backend`
+* Verify API key is correctly set in the secret
+* Check network connectivity to LLM provider
+
+**MCP tools not working:**
+
+* Verify service account permissions: `kubectl auth can-i --list --as=system:serviceaccount:your-namespace:ai-assistant`
+* Check MCP server logs in backend pod
+* Ensure allowed_tools are correctly configured
+
+**Content not found:**
+
+* Verify content volume mounts in deployment
+* Check RAG initialization logs
+* Ensure AsciiDoc files are in correct directory structure
+
+**Deploy script issues:**
+
+* Ensure you're logged into your cluster: `oc whoami` or `kubectl cluster-info`
+* Check if `.env.yaml` exists and has valid API key
+* Verify namespace permissions for creating resources
+
+=== Debug Mode
+
+Enable debug logging by updating your config:
+
+[source,yaml]
+----
+# In config/assistant-config.yaml
+logging:
+  log_rag_queries: true
+  log_mcp_calls: true
+  log_user_interactions: false
+----
+
+=== API Endpoints for Testing
+
+Once deployed, test the backend directly:
+
+* Health check: `https://your-backend-route/api/health`
+* RAG search: `https://your-backend-route/api/rag/search?q=kubernetes&debug=true`
+* Available tools: `https://your-backend-route/api/mcp/tools`
+
+== 🤝 Contributing
+
+. Fork the repository
+. Create a feature branch
+. Make your changes
+. Test with a sample workshop
+. Submit a pull request
+
+== 📝 License
+
+This project is licensed under the Apache License 2.0.
+
+== 🆘 Support
+
+* **Documentation**: Check this README and inline code comments
+* **Issues**: Report bugs and feature requests via GitHub Issues  
+* **Community**: Join the Red Hat Developer community discussions
+
+---
+
+Made with ❤️ by the Red Hat Developer Experience team

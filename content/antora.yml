@@ -14,6 +14,13 @@ asciidoc:
     ssh_user: devops
     ssh_password: devops
     ssh_command: ssh someone@example.com
+    # AI Assistant Configuration - be sure to escape single quote (') using double single quote ('') if you have them in your strings
+    assistant_name: "Workshop AI Assistant"
+    workshop_title: "Your Workshop Title"
+    welcome_message: "👋 Hi! I am your workshop assistant. I know all about the workshop content and can help you with questions, troubleshooting, and guidance."
+    sample_question_1: "💬 What is the main objective of this workshop?"
+    sample_question_2: "🔧 How do I troubleshoot common issues?"
+    sample_question_3: "📖 Walk me through the first module"
     page-links:
     - url: https://redhat.com
       text: Red Hat

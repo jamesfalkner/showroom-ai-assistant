@@ -136,3 +136,5 @@ Verify that the application is running by navigating to
 
 http://bastion.{guid}.example.opentlc.com:8500
 
+include::ai-chatbot.adoc[]
+

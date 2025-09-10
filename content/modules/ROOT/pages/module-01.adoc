@@ -147,3 +147,5 @@ Alternatively, you can use `podman` to kill the running container from
 ----
 podman kill $(podman ps | grep -v CONTAINER | cut -f1 -d" " )
 ----
+
+include::ai-chatbot.adoc[]

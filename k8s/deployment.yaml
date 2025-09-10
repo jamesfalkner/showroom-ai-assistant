@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-assistant-backend
+  labels:
+    app: ai-assistant
+    component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-assistant
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: ai-assistant
+        component: backend
+    spec:
+      serviceAccountName: ai-assistant
+      containers:
+      - name: backend
+        image: image-registry.openshift-image-registry.svc:5000/NAMESPACE_PLACEHOLDER/showroom-ai-assistant:latest
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        
+        # Environment variables from Secret
+        envFrom:
+        - secretRef:
+            name: ai-assistant-secrets
+        
+        # Additional environment variables
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        
+        # Volume mounts for configuration file
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config/assistant-config.yaml
+          subPath: assistant-config.yaml
+          readOnly: true
+        
+        # Resource limits and requests
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Startup probe for initial loading
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12  # Allow up to 2 minutes for startup
+      
+      volumes:
+      # Configuration file from ConfigMap
+      - name: config-volume
+        configMap:
+          name: ai-assistant-config
+          items:
+          - key: assistant-config.yaml
+            path: assistant-config.yaml
