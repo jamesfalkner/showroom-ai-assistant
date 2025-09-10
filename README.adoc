@@ -74,12 +74,28 @@ cp .env.yaml.example .env.yaml
 cp your-docs.pdf content/modules/ROOT/assets/techdocs/
 ----
 
-. **Deploy your enhanced workshop**:
+. **Deploy the AI assistant backend**:
 +
 [source,sh]
 ----
-# Build and deploy with AI backend
+# Deploy the AI backend service to your cluster
 ./deploy-backend.sh --namespace your-namespace
+----
+
+. **Redeploy the workshop frontend**:
++
+[source,sh]
+----
+# Commit the patched files to your existing workshop repository
+git add .
+git commit -m "Add AI assistant capabilities"
+git push
+
+# Trigger a redeployment of your existing workshop
+# This is workshop-specific and depends on your deployment setup:
+# - For GitOps: The push above should trigger automatic redeployment
+# - For manual deployments: Restart/rollout your workshop pods
+# - For OpenShift: oc rollout restart deployment/your-workshop-name
 ----
 
 The patch script copies the following to your existing workshop:
@@ -241,7 +257,12 @@ mcpServers:
 
 == 🚀 Deployment
 
-The `deploy-backend.sh` script provides an automated way to deploy your workshop with AI assistant to Kubernetes/OpenShift.
+The AI assistant uses a two-service architecture:
+
+* **Frontend**: The workshop UI with embedded chatbot (deployed via your existing workshop deployment process)
+* **Backend**: The AI assistant API service (deployed using `deploy-backend.sh`)
+
+The `deploy-backend.sh` script provides an automated way to deploy the AI assistant backend service to Kubernetes/OpenShift.
 
 === Deploy Script Usage
 
