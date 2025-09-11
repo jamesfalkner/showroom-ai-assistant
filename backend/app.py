@@ -10,6 +10,7 @@ import logging
 from typing import Dict, List, Optional, AsyncGenerator
 from pathlib import Path
 import re
+from contextlib import asynccontextmanager
 
 import httpx
 import numpy as np
@@ -45,8 +46,8 @@ def load_config():
     """Load configuration from assistant-config.yaml file and environment variables"""
     config_data = {}
     
-    # Try to load from YAML file (mounted from ConfigMap)
-    config_file_path = "/app/config/assistant-config.yaml"
+    # Try to load from YAML file (mounted from ConfigMap or local path)
+    config_file_path = os.getenv("ASSISTANT_CONFIG_PATH", "/app/config/assistant-config.yaml")
     if Path(config_file_path).exists():
         try:
             with open(config_file_path, 'r') as f:
@@ -122,11 +123,33 @@ class ChatRequest(BaseModel):
     include_mcp: bool = Field(default=True, description="Whether to include MCP tools")
     page_context: Optional[str] = Field(default=None, description="Current page title or context for focused assistance")
 
+# Application lifespan management
+@asynccontextmanager
+async def lifespan(app):
+    """Handle application startup and shutdown events"""
+    # Startup
+    logger.info("Application starting up...")
+    # Initialize RAG engine immediately on startup to avoid delays on first request
+    logger.info("Triggering RAG initialization during startup...")
+    await chatbot._initialize_rag()
+    logger.info("Startup RAG initialization completed")
+    # MCP servers will be initialized as needed
+    
+    yield
+    
+    # Shutdown
+    logger.info("Application shutting down...")
+    if chatbot.http_client:
+        await chatbot.http_client.aclose()
+    # Cleanup FastMCP clients
+    chatbot.mcp_manager.cleanup()
+
 # FastAPI app
 app = FastAPI(
     title="Showroom AI Assistant Backend",
     description="Generic AI Assistant with embedded RAG and MCP integration for showroom workshops",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -527,7 +550,34 @@ class ShowroomAIChatbot:
             if config.config_data and 'mcp' in config.config_data:
                 mcp_config = config.config_data['mcp']
                 logger.info("Using MCP configuration from loaded config")
-                return mcp_config
+                
+                # Transform from YAML structure (mcp.servers) to expected structure (mcpServers)
+                if 'servers' in mcp_config:
+                    # Clean the server configs to only include allowed fields
+                    cleaned_servers = {}
+                    for server_name, server_config in mcp_config['servers'].items():
+                        cleaned_servers[server_name] = {
+                            "command": server_config.get("command"),
+                            "args": server_config.get("args", []),
+                            "env": server_config.get("env", {}),
+                        }
+                        # Add optional fields if present
+                        if "cwd" in server_config:
+                            cleaned_servers[server_name]["cwd"] = server_config["cwd"]
+                        if "transport" in server_config:
+                            cleaned_servers[server_name]["transport"] = server_config["transport"]
+                    
+                    transformed_config = {
+                        "mcpServers": cleaned_servers
+                    }
+                    return transformed_config
+                else:
+                    # Check if already in expected format
+                    if 'mcpServers' in mcp_config:
+                        return mcp_config
+                    else:
+                        logger.warning("MCP config found but no 'servers' section, using default")
+                        return self._get_default_mcp_config()
             else:
                 logger.warning("No MCP configuration found in config data, using default")
                 return self._get_default_mcp_config()
@@ -1361,26 +1411,6 @@ class ShowroomAIChatbot:
 
 # Initialize chatbot
 chatbot = ShowroomAIChatbot()
-
-# Application lifecycle events
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup"""
-    logger.info("Application starting up...")
-    # Initialize RAG engine immediately on startup to avoid delays on first request
-    logger.info("Triggering RAG initialization during startup...")
-    await chatbot._initialize_rag()
-    logger.info("Startup RAG initialization completed")
-    # MCP servers will be initialized as needed
-    
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup services on shutdown"""
-    logger.info("Application shutting down...")
-    if chatbot.http_client:
-        await chatbot.http_client.aclose()
-    # Cleanup FastMCP clients
-    chatbot.mcp_manager.cleanup()
 
 # API Routes
 @app.post("/api/chat/stream")

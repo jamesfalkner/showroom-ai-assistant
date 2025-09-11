@@ -141,7 +141,7 @@ mcp:
       # Kubernetes MCP server configuration
       command: "uvx"
       args: 
-        - "mcp-server-kubernetes"
+        - "kubernetes-mcp-server"
       
       # Environment variables for the MCP server
       env:
