@@ -20,6 +20,8 @@ RUN pip install -r requirements.txt
 # Install MCP server for Kubernetes operations
 RUN pip install mcp-server-kubernetes
 
+RUN pip install uv
+
 # Copy application code
 COPY backend/ /app/
 COPY config/ /app/config/
