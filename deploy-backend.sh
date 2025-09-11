@@ -318,6 +318,23 @@ deploy_to_kubernetes() {
         fi
     fi
     
+    # Restart deployment to ensure latest configuration is picked up
+    log "Restarting deployment to ensure latest configuration..."
+    if $KUBE_CMD rollout restart deployment/ai-assistant-backend --namespace="$NAMESPACE"; then
+        success "Deployment restarted successfully"
+        
+        # Wait for the restart to complete
+        log "Waiting for rollout restart to complete..."
+        if ! $KUBE_CMD rollout status deployment/ai-assistant-backend \
+            --namespace="$NAMESPACE" --timeout=300s; then
+            warn "Rollout restart did not complete within timeout, but deployment may still be working"
+        else
+            success "Rollout restart completed successfully"
+        fi
+    else
+        warn "Failed to restart deployment, but initial deployment was successful"
+    fi
+    
     # Get the route or service URL
     if [ "$PLATFORM" = "OpenShift" ]; then
         ROUTE_URL=$($KUBE_CMD get route ai-assistant-backend -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "")

@@ -133,7 +133,20 @@ async def lifespan(app):
     logger.info("Triggering RAG initialization during startup...")
     await chatbot._initialize_rag()
     logger.info("Startup RAG initialization completed")
-    # MCP servers will be initialized as needed
+    
+    # Initialize MCP servers and discover tools early
+    logger.info("Triggering MCP initialization during startup...")
+    await chatbot.mcp_manager.initialize()
+    logger.info("Startup MCP initialization completed")
+    
+    # Discover tools early to catch any MCP server errors
+    logger.info("Triggering initial MCP tool discovery...")
+    try:
+        tools = await chatbot.mcp_manager.get_all_tools()
+        logger.info(f"✓ Initial tool discovery completed - found {len(tools)} tools")
+    except Exception as e:
+        logger.error(f"Failed initial tool discovery: {e}")
+        logger.warning("MCP tools may not be available")
     
     yield
     
@@ -317,6 +330,40 @@ class FastMCPManager:
         logger.info(f"Using FastMCP multi-server configuration")
         logger.info(f"Config: {json.dumps(self.mcp_config, indent=2)}")
         
+        # Add Kubernetes service discovery environment variables to MCP config
+        # These are automatically set by Kubernetes in pods
+        if "mcpServers" in self.mcp_config:
+            for server_name, server_config in self.mcp_config["mcpServers"].items():
+                # Ensure env section exists
+                if "env" not in server_config:
+                    server_config["env"] = {}
+                
+                # Add Kubernetes service discovery variables if available
+                if "KUBERNETES_SERVICE_HOST" in os.environ:
+                    server_config["env"]["KUBERNETES_SERVICE_HOST"] = os.environ["KUBERNETES_SERVICE_HOST"]
+                    logger.info(f"Added to MCP config: KUBERNETES_SERVICE_HOST={os.environ['KUBERNETES_SERVICE_HOST']}")
+                
+                if "KUBERNETES_SERVICE_PORT" in os.environ:
+                    server_config["env"]["KUBERNETES_SERVICE_PORT"] = os.environ["KUBERNETES_SERVICE_PORT"]
+                    logger.info(f"Added to MCP config: KUBERNETES_SERVICE_PORT={os.environ['KUBERNETES_SERVICE_PORT']}")
+                
+                # If we have both service host/port, we can also set KUBERNETES_MASTER if not already set
+                if ("KUBERNETES_SERVICE_HOST" in os.environ and 
+                    "KUBERNETES_SERVICE_PORT" in os.environ and 
+                    "KUBERNETES_MASTER" not in server_config["env"]):
+                    kubernetes_master = f"https://{os.environ['KUBERNETES_SERVICE_HOST']}:{os.environ['KUBERNETES_SERVICE_PORT']}"
+                    server_config["env"]["KUBERNETES_MASTER"] = kubernetes_master
+                    logger.info(f"Added to MCP config: KUBERNETES_MASTER={kubernetes_master}")
+        
+        # Set global environment variables for uvx/MCP server processes
+        # This ensures subprocesses spawned by FastMCP inherit these variables
+        if "mcpServers" in self.mcp_config:
+            for server_name, server_config in self.mcp_config["mcpServers"].items():
+                if "env" in server_config:
+                    for env_key, env_value in server_config["env"].items():
+                        os.environ[env_key] = str(env_value)
+                        logger.info(f"Set global env var: {env_key}={env_value}")
+        
         try:
             # Create FastMCP client with the full config
             self.client = Client(self.mcp_config)
@@ -342,6 +389,8 @@ class FastMCPManager:
             return []
         
         all_tools = []
+        filter_tools = False  # Initialize before try block
+        filtered_count = 0    # Initialize before try block
         logger.info("=== FASTMCP TOOLS DISCOVERY ===")
         
         try:
@@ -566,6 +615,9 @@ class ShowroomAIChatbot:
                             cleaned_servers[server_name]["cwd"] = server_config["cwd"]
                         if "transport" in server_config:
                             cleaned_servers[server_name]["transport"] = server_config["transport"]
+                        # Preserve allowed_tools for our own filtering logic (FastMCP ignores this)
+                        if "allowed_tools" in server_config:
+                            cleaned_servers[server_name]["allowed_tools"] = server_config["allowed_tools"]
                     
                     transformed_config = {
                         "mcpServers": cleaned_servers

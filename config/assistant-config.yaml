@@ -139,23 +139,33 @@ mcp:
   servers:
     kubernetes:
       # Kubernetes MCP server configuration
+      transport: "stdio"
       command: "uvx"
       args: 
         - "kubernetes-mcp-server"
-      
+        - "--log-level"
+        - "9"
+
       # Environment variables for the MCP server
       env:
-        # Use the default service account in OpenShift/Kubernetes
-        KUBECONFIG: "/var/run/secrets/kubernetes.io/serviceaccount"
-        # Default namespace for operations
+        # Use in-cluster service account authentication
+        KUBERNETES_MASTER: "https://kubernetes.default.svc.cluster.local"
         KUBERNETES_NAMESPACE: "default"
+        # Fix uvx cache and data permissions in container
+        UV_CACHE_DIR: "/tmp/.uv-cache"
+        UV_TOOL_DIR: "/tmp/.uv-tools"
+        UV_PYTHON_INSTALL_DIR: "/tmp/.uv-python"
+        XDG_CACHE_HOME: "/tmp/.cache"
+        XDG_DATA_HOME: "/tmp/.local/share"
+        HOME: "/tmp"
       
       # Specific tools to allow from this MCP server
       allowed_tools:
-        - "kubectl_get"              # Get resources (pods, services, deployments, etc.)
-        - "kubectl_describe"         # Describe detailed resource information
-        - "kubectl_logs"            # View container/pod logs
-        - "kubectl_get_events"      # View cluster events
+        - "pods_list"              
+        - "pods_list_in_namespace"        
+        - "pods_log"         
+        - "resources_get"     
+        - "resources_list"
       
       # Additional server configuration
       config:
