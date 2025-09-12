@@ -36,7 +36,7 @@ system_prompt:
     - "If you're unsure about something specific to this workshop, acknowledge the limitation"
 
   response_format:
-    description: "Format responses to be clear, actionable, and easy to follow"
+    description: "Format responses to be clear, actionable, and easy to follow. Always use Asciidoc formatting."
     rules:
       - "Use numbered lists for sequential procedures"
       - "Use bullet points for related concepts or options"
@@ -45,15 +45,15 @@ system_prompt:
       - "Include relevant warnings or important notes when appropriate"
       - "Reference specific workshop modules or sections when applicable"
     example: |
-      ## Understanding the Concept
+      == Understanding the Concept
       Brief explanation of the concept...
       
-      ## Step-by-Step Process
+      == Step-by-Step Process
       1. First step with specific instructions
       2. Second step with expected outcome
       3. Third step with verification method
       
-      ## Related Workshop Content
+      == Related Workshop Content
       - Module 2: Advanced Configuration
       - Lab Exercise 3: Hands-on Implementation
       
@@ -98,7 +98,8 @@ content_processing:
 # AI Model Configuration
 ai_model:
   # These can be overridden by environment variables
-  default_model: "gpt-4"
+  api_url: "https://api.openai.com/v1/chat/completions"
+  modelname: "gpt-4"
   max_tokens: 1000
   temperature: 0.1            # Lower temperature for more consistent technical responses
   

@@ -439,7 +439,7 @@ summary  {
 }
 
 .message-attribution a {
-  color: #0066cc;
+  color: #cc0000ff;
   text-decoration: none;
   font-weight: normal !important;
 }
@@ -1062,8 +1062,8 @@ class WorkshopChatbot {
     const pageContext = this.getCurrentPageContext();
     console.log('Page context for chat:', pageContext);
 
-    // Add user message to chat
-    this.addMessage(message, 'user');
+    // Add user message to display only (not to API history yet)
+    this.addMessageToDisplay(message, 'user');
     input.value = '';
     document.getElementById('chatbot-send').disabled = true;
 
@@ -1075,6 +1075,16 @@ class WorkshopChatbot {
     }
 
     try {
+      // Add user message to API history BEFORE the API call (but after display)
+      this.chatHistory.push({
+        role: 'user',
+        content: message
+      });
+      // Keep API history manageable
+      if (this.chatHistory.length > 20) {
+        this.chatHistory = this.chatHistory.slice(-20);
+      }
+      
       await this.streamChatResponse(message, pageContext);
       this.setStatus('');
     } catch (error) {
@@ -1129,7 +1139,7 @@ class WorkshopChatbot {
         },
         body: JSON.stringify({
           message: message,
-          conversation_history: this.chatHistory,
+          conversation_history: this.getConversationHistoryForAPI(message),
           include_mcp: this.config.mcpEnabled,
           page_context: pageContext
         })
@@ -1232,6 +1242,51 @@ class WorkshopChatbot {
     return state;
   }
 
+  getConversationHistoryForAPI(currentMessage) {
+    // Return conversation history excluding the current message to avoid duplicates
+    const history = [...this.chatHistory];
+    
+    // If the last message in history matches the current message, exclude it
+    if (history.length > 0 && 
+        history[history.length - 1].role === 'user' && 
+        history[history.length - 1].content === currentMessage) {
+      history.pop(); // Remove the duplicate current message
+    }
+    
+    return history;
+  }
+
+  addMessageToDisplay(content, sender, type = 'normal') {
+    // Add message to UI display only (not to API conversation history)
+    const messagesContainer = document.getElementById('chatbot-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message ' + sender + '-message' + (type === 'error' ? ' error-message' : '');
+    
+    const timeString = new Date().toLocaleTimeString();
+    messageDiv.innerHTML = 
+      '<div class="message-content">' + this.formatMessage(content) + '</div>' +
+      '<div class="message-time">' + timeString + '</div>';
+    
+    messagesContainer.appendChild(messageDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Add to display history for UI persistence
+    this.displayHistory.push({
+      content: content,
+      sender: sender,
+      type: type,
+      time: timeString
+    });
+    
+    // Keep display history manageable (last 50 messages)
+    if (this.displayHistory.length > 50) {
+      this.displayHistory = this.displayHistory.slice(-50);
+    }
+    
+    // Save state after adding message
+    this.saveChatState();
+  }
+
   addMessage(content, sender, type = 'normal') {
     const messagesContainer = document.getElementById('chatbot-messages');
     const messageDiv = document.createElement('div');
@@ -1287,12 +1342,18 @@ class WorkshopChatbot {
     let formatted = content;
     
     // Debug logging for attribution content
-    if (content.includes('Workshop:') || content.includes('References:')) {
+    if (content.includes('RELEVANT WORKSHOP LINKS:') || content.includes('TECHDOC REFERENCES:')) {
       console.log('=== FORMATTING ATTRIBUTION ===');
       console.log('Original content:', content);
     }
     
-    // AsciiDoc section headers
+    // AsciiDoc section headers (handle trailing == properly)
+    formatted = formatted.replace(/^===== (.+?) =====$/gm, '<h6>$1</h6>');
+    formatted = formatted.replace(/^==== (.+?) ====$/gm, '<h5>$1</h5>');
+    formatted = formatted.replace(/^=== (.+?) ===$/gm, '<h4>$1</h4>');
+    formatted = formatted.replace(/^== (.+?) ==$/gm, '<h3>$1</h3>');
+    formatted = formatted.replace(/^= (.+?) =$/gm, '<h2>$1</h2>');
+    // Also handle headers without trailing ==
     formatted = formatted.replace(/^===== (.+?)$/gm, '<h6>$1</h6>');
     formatted = formatted.replace(/^==== (.+?)$/gm, '<h5>$1</h5>');
     formatted = formatted.replace(/^=== (.+?)$/gm, '<h4>$1</h4>');
@@ -1312,8 +1373,10 @@ class WorkshopChatbot {
     // AsciiDoc numbered lists
     formatted = formatted.replace(/^(\d+)\.\s+(.+?)$/gm, '<li class="numbered-list">$2</li>');
     
-    // AsciiDoc bullet lists
-    formatted = formatted.replace(/^\*\s+(.+?)$/gm, '<li class="bullet-list">$1</li>');
+    // AsciiDoc bullet lists (protect from bold processing by replacing * with placeholder)
+    formatted = formatted.replace(/^\*\s+(.+?)$/gm, function(match, content) {
+      return `<li class="bullet-list">${content}</li>`;
+    });
     
     // Convert horizontal rules
     formatted = formatted.replace(/^---$/gm, '<hr>');
@@ -1321,11 +1384,23 @@ class WorkshopChatbot {
     // AsciiDoc links (process BEFORE bold formatting to avoid conflicts)
     formatted = formatted.replace(/link:([^\[]+)\[([^\]]*)\]/g, '<a href="$1" target="_blank">$2</a>');
     
+    // URL[TEXT] format - simple URL followed by square brackets with text
+    formatted = formatted.replace(/(https?:\/\/[^\s\[\]]+)\[([^\]]+)\]/g, '<a href="$1" target="_blank">$2</a>');
+    
+    // Markdown-style links [text](url)
+    formatted = formatted.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    
+    // Bare URLs - convert standalone URLs to clickable links (display without scheme)
+    formatted = formatted.replace(/(?<![\["])(https?:\/\/[^\s\[\]()<>]+)(?![\]"])/g, function(match) {
+      const displayText = match.replace(/^https?:\/\//, '');
+      return `<a href="${match}" target="_blank">${displayText}</a>`;
+    });
+    
     // Basic markdown-like formatting (backwards compatibility)
     // Double asterisks for bold
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Single asterisks for bold (but avoid matching across square brackets used in links)
-    formatted = formatted.replace(/\*([^*\[\]]*?)\*/g, '<strong>$1</strong>');
+    // Single asterisks for bold (but avoid line-start asterisks which are bullet lists, and square brackets)
+    formatted = formatted.replace(/(?<!^|\n)\*([^*\[\]\n]+?)\*/g, '<strong>$1</strong>');
     formatted = formatted.replace(/`(.*?)`/g, '<code class="inline-code">$1</code>');
     
     // Handle line breaks
@@ -1333,7 +1408,7 @@ class WorkshopChatbot {
     formatted = formatted.replace(/\n/g, '<br>');
     
     // Handle attribution content specially
-    if (formatted.includes('<hr>') && (content.includes('WORKSHOP:') || content.includes('REFERENCES:'))) {
+    if (formatted.includes('<hr>') && (content.includes('RELEVANT WORKSHOP LINKS:') || content.includes('TECHDOC REFERENCES:'))) {
       // Split on HR and wrap attribution part with special class
       const parts = formatted.split('<hr>');
       if (parts.length === 2) {
@@ -1361,7 +1436,7 @@ class WorkshopChatbot {
     }
     
     // Debug logging for attribution content
-    if (content.includes('Workshop:') || content.includes('References:')) {
+    if (content.includes('RELEVANT WORKSHOP LINKS:') || content.includes('TECHDOC REFERENCES:')) {
       console.log('Formatted content:', formatted);
       console.log('=== END FORMATTING ATTRIBUTION ===');
     }

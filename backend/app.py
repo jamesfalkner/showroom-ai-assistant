@@ -68,8 +68,8 @@ class Config:
         
         # LLM Configuration (from environment variables for security)
         self.LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-        self.LLM_API_URL = os.getenv("LLM_API_URL", "https://api.openai.com/v1/chat/completions")
-        self.LLM_MODEL = os.getenv("LLM_MODEL", self._get_config_value("ai_model.default_model", "gpt-4"))
+        self.LLM_API_URL = os.getenv("LLM_API_URL", self._get_config_value("ai_model.api_url", "https://api.openai.com/v1/chat/completions"))
+        self.LLM_MODEL = os.getenv("LLM_MODEL", self._get_config_value("ai_model.modelname", "gpt-4"))
         self.MAX_TOKENS = int(os.getenv("MAX_TOKENS", str(self._get_config_value("ai_model.max_tokens", 1000))))
         self.TEMPERATURE = float(os.getenv("TEMPERATURE", str(self._get_config_value("ai_model.temperature", 0.1))))
         
@@ -1033,12 +1033,16 @@ class ShowroomAIChatbot:
         
         attribution_parts = []
         
-        # Workshop content sources with clickable links
+        # Workshop content sources with clickable links (limit to top 5 by relevance)
         if workshop_sources:
             workshop_links = []
             seen_pages = set()
             
             for source in workshop_sources:
+                # Stop if we already have 5 workshop links
+                if len(workshop_links) >= 5:
+                    break
+                    
                 title = source['title']
                 file_path = source.get('file_path', '')
                 
@@ -1062,12 +1066,16 @@ class ShowroomAIChatbot:
                 workshop_part = "RELEVANT WORKSHOP LINKS:\n" + "\n".join(workshop_links)
                 attribution_parts.append(workshop_part)
         
-        # PDF reference sources (just names, no links)
+        # PDF reference sources (just names, no links) - limit to top 3 by relevance
         if pdf_sources:
             pdf_names = []
             seen_pdfs = set()
             
             for source in pdf_sources:
+                # Stop if we already have 3 PDF references
+                if len(pdf_names) >= 3:
+                    break
+                    
                 title = source['title']
                 if title not in seen_pdfs:
                     seen_pdfs.add(title)
@@ -1082,6 +1090,45 @@ class ShowroomAIChatbot:
             return "\n\n---\n\n" + "\n\n".join(attribution_parts)
         
         return ""
+    
+    def _normalize_conversation_roles(self, conversation_history):
+        """Normalize conversation to ensure proper user/assistant alternation"""
+        if not conversation_history:
+            return []
+        
+        normalized = []
+        last_role = None
+        last_content = None
+        
+        for msg in conversation_history:
+            current_role = msg.role
+            current_content = msg.content
+            
+            # Skip if same role as previous (prevents consecutive user or assistant messages)
+            if current_role == last_role:
+                logger.warning(f"Skipping consecutive {current_role} message to maintain alternation")
+                continue
+            
+            # Skip if same content as previous (prevents duplicate messages)
+            if current_content == last_content:
+                logger.warning(f"Skipping duplicate message content: {current_content[:50]}{'...' if len(current_content) > 50 else ''}")
+                continue
+                
+            # Ensure we start with user if first message isn't user
+            if not normalized and current_role != "user":
+                logger.warning(f"First conversation message is {current_role}, skipping to maintain user/assistant alternation")
+                continue
+                
+            # Only allow user and assistant roles in conversation
+            if current_role in ["user", "assistant"]:
+                normalized.append(msg)
+                last_role = current_role
+                last_content = current_content
+            else:
+                logger.warning(f"Skipping message with role {current_role}, only user/assistant allowed in conversation")
+        
+        logger.info(f"Normalized conversation: {len(conversation_history)} → {len(normalized)} messages")
+        return normalized
     
     def _convert_file_path_to_url(self, file_path: str) -> str:
         """Convert a file path to HTML URL for workshop content"""
@@ -1212,21 +1259,50 @@ class ShowroomAIChatbot:
             # Step 3: Prepare messages
             messages = [{"role": "system", "content": system_prompt}]
 
-            # Add conversation history (limited by config)
+            # Add conversation history (limited by config) with proper alternation
             if conversation_history:
                 # Limit conversation history to configured maximum
                 limited_history = conversation_history[-config.MAX_CONVERSATION_HISTORY:] if len(conversation_history) > config.MAX_CONVERSATION_HISTORY else conversation_history
                 logger.info(f"Using {len(limited_history)} of {len(conversation_history)} conversation history messages")
-                for msg in limited_history:
+                
+                # Log each history message for debugging
+                for i, msg in enumerate(limited_history):
+                    logger.info(f"History {i+1}: Role={msg.role}, Content={msg.content[:100]}{'...' if len(msg.content) > 100 else ''}")
+                
+                # Ensure proper role alternation
+                normalized_history = self._normalize_conversation_roles(limited_history)
+                for msg in normalized_history:
                     messages.append({"role": msg.role, "content": msg.content})
 
-            # Add current user message
-            messages.append({"role": "user", "content": user_message})
+            # Add current user message only if it's not already in the messages array
+            current_message_exists = False
+            for msg in messages:
+                if msg['role'] == 'user' and msg['content'] == user_message:
+                    current_message_exists = True
+                    break
+            
+            if not current_message_exists:
+                messages.append({"role": "user", "content": user_message})
+                logger.info(f"Added current user message: {user_message[:100]}{'...' if len(user_message) > 100 else ''}")
+            else:
+                logger.warning(f"Skipping duplicate current user message: {user_message[:100]}{'...' if len(user_message) > 100 else ''}")
 
             logger.info(f"=== COMPLETE MESSAGE CHAIN ===")
             logger.info(f"Total Messages: {len(messages)}")
+            
+            # Check for role alternation issues
             for i, msg in enumerate(messages):
                 logger.info(f"Message {i+1}: Role={msg['role']}, Content={msg['content'][:200]}{'...' if len(msg['content']) > 200 else ''}")
+                
+                # Check for consecutive non-system roles
+                if i > 0 and messages[i-1]['role'] != 'system' and msg['role'] == messages[i-1]['role']:
+                    logger.error(f"ROLE ALTERNATION ERROR: Messages {i} and {i+1} both have role '{msg['role']}'")
+                    
+            # Final validation
+            user_messages = [i for i, msg in enumerate(messages) if msg['role'] == 'user']
+            assistant_messages = [i for i, msg in enumerate(messages) if msg['role'] == 'assistant']
+            logger.info(f"User messages at positions: {user_messages}")
+            logger.info(f"Assistant messages at positions: {assistant_messages}")
             logger.info("=== END MESSAGE CHAIN ===")
 
             # Step 4: Generate response with tools if MCP is enabled
@@ -1326,6 +1402,8 @@ class ShowroomAIChatbot:
             mcp_instructions = prompt_config.get("mcp_instructions", "")
             if mcp_instructions:
                 prompt += f"{mcp_instructions}\n"
+            # Extra emphasis for tools to prevent attribution duplication
+            prompt += "\nWhen using tools: NEVER generate reference lists, source citations, workshop links, or any '---' separator sections in your response. The system will add these automatically after your response.\n"
 
         # Prevent duplicate source attribution
         prompt += "\nIMPORTANT: Provide a complete helpful response to the user's question. Do not add any source citations, reference lists, or attribution lines (like '---' sections) at the end of your response - these will be added automatically.\n"
