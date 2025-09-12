@@ -397,6 +397,56 @@ summary  {
     color: black;
   }
 }
+
+/* Attribution styling */
+.attribution {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e1e5e9;
+}
+
+.attribution small {
+  color: #666;
+  font-size: 12px;
+}
+
+.attribution a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.attribution a:hover {
+  text-decoration: underline;
+}
+
+/* Message attribution styling - for references that appear after messages */
+.message-attribution {
+  font-size: 10px !important;
+  color: #888 !important;
+  text-transform: uppercase;
+  margin-top: 8px;
+  line-height: 1.3;
+}
+
+.message-attribution * {
+  font-size: 10px !important;
+  text-transform: uppercase;
+  font-weight: normal !important;
+}
+
+.message-attribution strong {
+  font-weight: normal !important;
+}
+
+.message-attribution a {
+  color: #0066cc;
+  text-decoration: none;
+  font-weight: normal !important;
+}
+
+.message-attribution a:hover {
+  text-decoration: underline;
+}
 </style>
 
 <script>
@@ -600,6 +650,7 @@ class WorkshopChatbot {
         '<div class="chatbot-header">' +
           '<h3>{assistant_name}</h3>' +
           '<div class="chatbot-controls">' +
+            '<button id="chatbot-new-chat" class="chatbot-btn-icon" title="New Chat">🔄</button>' +
             '<button id="chatbot-settings" class="chatbot-btn-icon" title="Settings">⚙️</button>' +
             '<button id="chatbot-close" class="chatbot-btn-icon" title="Close">✕</button>' +
           '</div>' +
@@ -670,6 +721,11 @@ class WorkshopChatbot {
     // Settings toggle
     safeBindEvent('chatbot-settings', 'click', () => {
       this.toggleSettings();
+    });
+
+    // New chat button
+    safeBindEvent('chatbot-new-chat', 'click', () => {
+      this.startNewChat();
     });
 
     // MCP enabled toggle
@@ -774,6 +830,68 @@ class WorkshopChatbot {
     const panel = document.getElementById('chatbot-settings-panel');
     const isVisible = panel.style.display === 'block';
     panel.style.display = isVisible ? 'none' : 'block';
+  }
+
+  startNewChat() {
+    // Clear chat history
+    this.displayHistory = [];
+    this.chatHistory = [];
+    
+    // Clear localStorage chat state
+    localStorage.removeItem('chatbot-state');
+    
+    // Clear messages container and show welcome message
+    const messagesContainer = document.getElementById('chatbot-messages');
+    if (messagesContainer) {
+      messagesContainer.innerHTML = 
+        '<div class="message bot-message">' +
+          '<div class="message-content">' +
+            '{welcome_message}' +
+            '<div class="sample-questions-container">' +
+              '<div class="sample-question" data-question="{sample_question_1}" style="cursor: pointer; color: #0066cc; margin: 4px 0; padding: 2px 0; font-size: 13px;" onmouseover="this.style.backgroundColor=&quot;#f0f8ff&quot;" onmouseout="this.style.backgroundColor=&quot;transparent&quot;">{sample_question_1}</div>' +
+              '<div class="sample-question" data-question="{sample_question_2}" style="cursor: pointer; color: #0066cc; margin: 4px 0; padding: 2px 0; font-size: 13px;" onmouseover="this.style.backgroundColor=&quot;#f0f8ff&quot;" onmouseout="this.style.backgroundColor=&quot;transparent&quot;">{sample_question_2}</div>' +
+              '<div class="sample-question" data-question="{sample_question_3}" style="cursor: pointer; color: #0066cc; margin: 4px 0; padding: 2px 0; font-size: 13px;" onmouseover="this.style.backgroundColor=&quot;#f0f8ff&quot;" onmouseout="this.style.backgroundColor=&quot;transparent&quot;">{sample_question_3}</div>' +
+            '</div>' +
+            '<em>How can I help? Enter a question or click one of the sample questions to get started!</em>' +
+          '</div>' +
+        '</div>';
+      
+      // Re-bind sample question click events with auto-send
+      const sampleQuestions = messagesContainer.querySelectorAll('.sample-question');
+      sampleQuestions.forEach(question => {
+        question.addEventListener('click', (e) => {
+          const questionText = e.target.getAttribute('data-question');
+          const input = document.getElementById('chatbot-input');
+          const sendBtn = document.getElementById('chatbot-send');
+          
+          if (input && questionText) {
+            input.value = questionText;
+            input.focus();
+            
+            // Enable send button
+            if (sendBtn) {
+              sendBtn.disabled = false;
+            }
+            
+            // Automatically send the question
+            setTimeout(() => {
+              this.sendMessage();
+            }, 100);
+          }
+        });
+      });
+    }
+    
+    // Clear status
+    this.setStatus('');
+    
+    // Close settings panel if open
+    const settingsPanel = document.getElementById('chatbot-settings-panel');
+    if (settingsPanel) {
+      settingsPanel.style.display = 'none';
+    }
+    
+    console.log('Started new chat session');
   }
 
   saveSettings() {
@@ -980,7 +1098,6 @@ class WorkshopChatbot {
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-    let hasStarted = false;
 
     try {
       // Use Server-Sent Events for streaming
@@ -989,38 +1106,13 @@ class WorkshopChatbot {
         include_mcp: this.config.mcpEnabled ? 'true' : 'false'
       }));
 
-      let fullResponse = '';
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          if (data.status === 'starting') {
-            // Remove typing indicator and start showing response
-            const contentDiv = messageDiv.querySelector('.message-content');
-            contentDiv.innerHTML = '';
-            hasStarted = true;
-          } else if (data.status === 'complete') {
-            eventSource.close();
-          } else if (data.content) {
-            // Append new content
-            fullResponse += data.content;
-            const contentDiv = messageDiv.querySelector('.message-content');
-            contentDiv.textContent = fullResponse; // Show raw text during streaming
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-          } else if (data.error) {
-            throw new Error(data.error);
-          }
-        } catch (parseError) {
-          console.error('Error parsing SSE data:', parseError);
-        }
-      };
+      let state = { fullResponse: '', hasStarted: false };
 
       eventSource.onerror = (error) => {
         console.error('SSE error:', error);
         eventSource.close();
         
-        if (!hasStarted) {
+        if (!state.hasStarted) {
           messageDiv.remove();
           throw new Error('Failed to connect to chat service');
         }
@@ -1058,59 +1150,87 @@ class WorkshopChatbot {
         const lines = chunk.split('\n');
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line.trim() && line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
-              
-              if (data.status === 'starting') {
-                const contentDiv = messageDiv.querySelector('.message-content');
-                contentDiv.innerHTML = '';
-                hasStarted = true;
-              } else if (data.content) {
-                fullResponse += data.content;
-                const contentDiv = messageDiv.querySelector('.message-content');
-                contentDiv.textContent = fullResponse; // Show raw text during streaming
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-              } else if (data.error) {
-                throw new Error(data.error);
-              }
+              const jsonStr = line.slice(6).trim();
+              const data = JSON.parse(jsonStr);
+              console.log('SSE data received:', data);
+              state = this.processSSEData(data, messageDiv, messagesContainer, state);
             } catch (parseError) {
-              // Ignore parsing errors for partial data
+              console.log('Parse error for line:', line, parseError);
             }
           }
         }
       }
       
       // Format the complete response as AsciiDoc after streaming is done
-      if (fullResponse && fullResponse.trim()) {
+      if (state.fullResponse && state.fullResponse.trim()) {
+        console.log('=== FRONTEND DEBUG ===');
+        console.log('Full response length:', state.fullResponse.length);
+        console.log('Full response content:', state.fullResponse);
+        console.log('=== END FRONTEND DEBUG ===');
+        
         const contentDiv = messageDiv.querySelector('.message-content');
-        contentDiv.innerHTML = this.formatMessage(fullResponse.trim());
+        const formattedContent = this.formatMessage(state.fullResponse.trim());
+        console.log('Formatted content:', formattedContent);
+        contentDiv.innerHTML = formattedContent;
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
       }
       
       // Add the complete assistant response to conversation history
-      if (fullResponse && fullResponse.trim()) {
+      if (state.fullResponse && state.fullResponse.trim()) {
         this.chatHistory.push({
           role: 'assistant',
-          content: fullResponse.trim()
+          content: state.fullResponse.trim()
         });
         
-        // Keep history manageable (last 20 messages)
+        // Also add to display history for UI persistence
+        this.displayHistory.push({
+          content: state.fullResponse.trim(),
+          sender: 'bot',
+          type: 'normal',
+          time: new Date().toLocaleTimeString()
+        });
+        
+        // Keep both histories manageable
         if (this.chatHistory.length > 20) {
           this.chatHistory = this.chatHistory.slice(-20);
         }
+        if (this.displayHistory.length > 50) {
+          this.displayHistory = this.displayHistory.slice(-50);
+        }
+        
+        // Save state after adding the response
+        this.saveChatState();
       }
 
     } catch (error) {
       console.error('Streaming error:', error);
-      if (!hasStarted) {
+      if (!state.hasStarted) {
         messageDiv.remove();
       }
       throw error;
     }
   }
 
-
+  processSSEData(data, messageDiv, messagesContainer, state) {
+    if (data.status === 'starting') {
+      const contentDiv = messageDiv.querySelector('.message-content');
+      contentDiv.innerHTML = '';
+      state.hasStarted = true;
+    } else if (data.content) {
+      console.log('Adding content to fullResponse:', data.content);
+      state.fullResponse += data.content;
+      const contentDiv = messageDiv.querySelector('.message-content');
+      contentDiv.textContent = state.fullResponse; // Show raw text during streaming
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    } else if (data.status === 'complete') {
+      console.log('Stream marked as complete');
+    } else if (data.error) {
+      throw new Error(data.error);
+    }
+    return state;
+  }
 
   addMessage(content, sender, type = 'normal') {
     const messagesContainer = document.getElementById('chatbot-messages');
@@ -1166,6 +1286,12 @@ class WorkshopChatbot {
     // Enhanced AsciiDoc + Markdown formatting
     let formatted = content;
     
+    // Debug logging for attribution content
+    if (content.includes('Workshop:') || content.includes('References:')) {
+      console.log('=== FORMATTING ATTRIBUTION ===');
+      console.log('Original content:', content);
+    }
+    
     // AsciiDoc section headers
     formatted = formatted.replace(/^===== (.+?)$/gm, '<h6>$1</h6>');
     formatted = formatted.replace(/^==== (.+?)$/gm, '<h5>$1</h5>');
@@ -1189,21 +1315,55 @@ class WorkshopChatbot {
     // AsciiDoc bullet lists
     formatted = formatted.replace(/^\*\s+(.+?)$/gm, '<li class="bullet-list">$1</li>');
     
-    // AsciiDoc links
+    // Convert horizontal rules
+    formatted = formatted.replace(/^---$/gm, '<hr>');
+    
+    // AsciiDoc links (process BEFORE bold formatting to avoid conflicts)
     formatted = formatted.replace(/link:([^\[]+)\[([^\]]*)\]/g, '<a href="$1" target="_blank">$2</a>');
     
     // Basic markdown-like formatting (backwards compatibility)
+    // Double asterisks for bold
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    // Single asterisks for bold (but avoid matching across square brackets used in links)
+    formatted = formatted.replace(/\*([^*\[\]]*?)\*/g, '<strong>$1</strong>');
     formatted = formatted.replace(/`(.*?)`/g, '<code class="inline-code">$1</code>');
     
     // Handle line breaks
     formatted = formatted.replace(/\n\n/g, '</p><p>');
     formatted = formatted.replace(/\n/g, '<br>');
     
-    // Wrap in paragraph tags if not already formatted
-    if (!formatted.includes('<h') && !formatted.includes('<div') && !formatted.includes('<pre') && !formatted.includes('<li')) {
-      formatted = '<p>' + formatted + '</p>';
+    // Handle attribution content specially
+    if (formatted.includes('<hr>') && (content.includes('WORKSHOP:') || content.includes('REFERENCES:'))) {
+      // Split on HR and wrap attribution part with special class
+      const parts = formatted.split('<hr>');
+      if (parts.length === 2) {
+        const mainContent = parts[0].trim();
+        const attributionContent = parts[1].trim();
+        
+        // Wrap main content in paragraph if needed
+        const wrappedMain = (!mainContent.includes('<h') && !mainContent.includes('<div') && !mainContent.includes('<pre') && !mainContent.includes('<li')) 
+          ? '<p>' + mainContent + '</p>' 
+          : mainContent;
+        
+        // Wrap attribution in special div
+        formatted = wrappedMain + '<hr><div class="message-attribution">' + attributionContent + '</div>';
+      } else {
+        // Fallback to normal wrapping
+        if (!formatted.includes('<h') && !formatted.includes('<div') && !formatted.includes('<pre') && !formatted.includes('<li')) {
+          formatted = '<p>' + formatted + '</p>';
+        }
+      }
+    } else {
+      // Normal content wrapping
+      if (!formatted.includes('<h') && !formatted.includes('<div') && !formatted.includes('<pre') && !formatted.includes('<li')) {
+        formatted = '<p>' + formatted + '</p>';
+      }
+    }
+    
+    // Debug logging for attribution content
+    if (content.includes('Workshop:') || content.includes('References:')) {
+      console.log('Formatted content:', formatted);
+      console.log('=== END FORMATTING ATTRIBUTION ===');
     }
     
     return formatted;

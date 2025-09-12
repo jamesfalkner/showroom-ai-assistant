@@ -3,7 +3,7 @@
 Showroom AI Assistant Backend
 A generic FastAPI service with embedded RAG for workshop chatbots
 """
-
+import asyncio
 import os
 import json
 import logging
@@ -1015,15 +1015,17 @@ class ShowroomAIChatbot:
         return chunks
 
     def _generate_source_attribution(self, sources: List[Dict]) -> str:
-        """Generate source attribution text with links for workshop content and PDF references"""
+        """Generate source attribution text with clickable links for workshop content and PDF references"""
         if not sources:
             return ""
             
         workshop_sources = []
         pdf_sources = []
         
-        # Separate workshop content from PDF references
-        for source in sources:
+        # Sort sources by relevance score (highest first) and separate by type
+        sources_sorted = sorted(sources, key=lambda x: x.get('similarity', 0), reverse=True)
+        
+        for source in sources_sorted:
             if source['content_type'] == 'pdf-documentation':
                 pdf_sources.append(source)
             else:
@@ -1031,36 +1033,74 @@ class ShowroomAIChatbot:
         
         attribution_parts = []
         
-        # Workshop content sources
+        # Workshop content sources with clickable links
         if workshop_sources:
             workshop_links = []
+            seen_pages = set()
+            
             for source in workshop_sources:
                 title = source['title']
-                workshop_links.append(f'<strong>{title}</strong>')
+                file_path = source.get('file_path', '')
+                
+                # Convert file path to HTML URL
+                # e.g., "content/modules/ROOT/pages/module-01.adoc" -> "module-01.html"
+                html_url = self._convert_file_path_to_url(file_path)
+                
+                # Avoid duplicate links for the same page
+                page_key = (title, html_url)
+                if page_key not in seen_pages:
+                    seen_pages.add(page_key)
+                    
+                    if html_url:
+                        # Use AsciiDoc link syntax: link:url[text]
+                        workshop_links.append(f'link:{html_url}[*{title}*]')
+                    else:
+                        # Fallback if we can't generate URL
+                        workshop_links.append(f'*{title}*')
             
-            workshop_part = "<strong>Workshop:</strong> " + ", ".join(workshop_links)
-            attribution_parts.append(workshop_part)
+            if workshop_links:
+                workshop_part = "RELEVANT WORKSHOP LINKS:\n" + "\n".join(workshop_links)
+                attribution_parts.append(workshop_part)
         
-        # PDF reference sources  
+        # PDF reference sources (just names, no links)
         if pdf_sources:
-            pdf_links = []
+            pdf_names = []
+            seen_pdfs = set()
+            
             for source in pdf_sources:
                 title = source['title']
-                pdf_links.append(title)
+                if title not in seen_pdfs:
+                    seen_pdfs.add(title)
+                    pdf_names.append(title)
             
-            # Remove duplicates while preserving order
-            unique_pdf_links = []
-            seen = set()
-            for link in pdf_links:
-                if link not in seen:
-                    unique_pdf_links.append(link)
-                    seen.add(link)
-            
-            pdf_part = "<strong>References:</strong> " + ", ".join(unique_pdf_links)
-            attribution_parts.append(pdf_part)
+            if pdf_names:
+                pdf_part = "TECHDOC REFERENCES:\n" + "\n".join(pdf_names)
+                attribution_parts.append(pdf_part)
         
         if attribution_parts:
-            return "\n\n---\n\n<small>" + " | ".join(attribution_parts) + "</small>"
+            # Use AsciiDoc formatting that the frontend will process correctly
+            return "\n\n---\n\n" + "\n\n".join(attribution_parts)
+        
+        return ""
+    
+    def _convert_file_path_to_url(self, file_path: str) -> str:
+        """Convert a file path to HTML URL for workshop content"""
+        if not file_path:
+            return ""
+            
+        # Extract filename from path like "content/modules/ROOT/pages/module-01.adoc"
+        if '/pages/' in file_path and file_path.endswith('.adoc'):
+            # Get the filename without extension
+            filename = file_path.split('/')[-1].replace('.adoc', '')
+            
+            # Skip special files that don't generate HTML pages
+            skip_files = ['ai-chatbot', 'nav', 'header', 'footer', 'theme', 'layout']
+            if any(skip_file in filename for skip_file in skip_files):
+                return ""
+            
+            # Convert to HTML URL
+            return f"{filename}.html"
+        
         return ""
 
     async def retrieve_relevant_content(self, query: str, page_context: str = None, max_chunks: int = None) -> tuple[str, List[Dict]]:
@@ -1156,9 +1196,11 @@ class ShowroomAIChatbot:
 
             # Step 1: Retrieve relevant context using RAG with page context
             if page_context:
-                yield f"data: {json.dumps({'status': f'Searching {page_context} content...'})}\\n\\n"
+                yield f"data: {json.dumps({'status': f'Searching {page_context} content...'})}\n\n"
             else:
-                yield f"data: {json.dumps({'status': 'Searching workshop content...'})}\\n\\n"
+                yield f"data: {json.dumps({'status': 'Searching workshop content...'})}\n\n"
+            await asyncio.sleep(0.1)
+
             relevant_context, sources = await self.retrieve_relevant_content(user_message, page_context)
 
             # Step 2: Build system prompt with retrieved context
@@ -1190,27 +1232,41 @@ class ShowroomAIChatbot:
             # Step 4: Generate response with tools if MCP is enabled
             if include_mcp:
                 logger.info("=== USING TOOLS PATH ===")
-                yield f"data: {json.dumps({'status': 'Generating response with tools...'})}\\n\\n"
+                yield f"data: {json.dumps({'status': 'Generating response with tools...'})}\n\n"
+                logger.info("Starting tools streaming...")
                 async for chunk in self._stream_with_tools(messages, user_message):
                     yield chunk
+                logger.info("Tools streaming completed")
             else:
                 logger.info("=== USING REGULAR STREAMING PATH ===")
-                yield f"data: {json.dumps({'status': 'Generating response...'})}\\n\\n"
+                yield f"data: {json.dumps({'status': 'Generating response...'})}\n\n"
+                logger.info("Starting regular streaming...")
                 async for chunk in self._stream_llm_response(messages):
                     yield chunk
+                logger.info("Regular streaming completed")
+
+            await asyncio.sleep(0.1)
 
             # Step 5: Add source attribution at the end
+            logger.info(f"=== SOURCE ATTRIBUTION DEBUG ===")
+            logger.info(f"Sources available: {len(sources)}")
             source_attribution = self._generate_source_attribution(sources)
+            logger.info(f"Attribution generated: {bool(source_attribution)}")
+            logger.info(f"Attribution content: {repr(source_attribution)}")
             if source_attribution:
                 logger.info("=== ADDING SOURCE ATTRIBUTION ===")
-                yield f"data: {json.dumps({'content': source_attribution})}\\n\\n"
+                yield f"data: {json.dumps({'content': source_attribution})}\n\n"
+                # Add a small delay to ensure attribution is sent separately
+                await asyncio.sleep(0.1)
+            else:
+                logger.warning("No source attribution was generated")
 
             logger.info("=== CHAT REQUEST COMPLETED ===")
 
         except Exception as e:
             logger.error(f"Error in stream_chat_response: {e}")
             logger.info("=== CHAT REQUEST FAILED ===")
-            yield f"data: {json.dumps({'error': str(e)})}\\n\\n"
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     def _build_system_prompt(self, relevant_context: str, include_mcp: bool, page_context: str = None) -> str:
         """Build system prompt with RAG context, tool info, and optional page context using external configuration"""
@@ -1481,6 +1537,7 @@ async def stream_chat(chat_request: ChatRequest):
             yield chunk
 
         yield "data: {\"status\": \"complete\"}\n\n"
+        await asyncio.sleep(0.1)
 
     return StreamingResponse(
         generate(),
