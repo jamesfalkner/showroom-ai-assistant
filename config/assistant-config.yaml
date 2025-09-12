@@ -106,7 +106,7 @@ ai_model:
   # Context window management
   context_settings:
     max_conversation_history: 20    # Number of previous messages to retain
-    max_rag_chunks: 3               # Maximum content chunks to include per response
+    max_rag_chunks: 8               # Maximum content chunks to include per response
     context_prioritization: "page"  # Prioritize content from current page/module
 
 # Workshop-specific customizations

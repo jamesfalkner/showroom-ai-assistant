@@ -1234,6 +1234,9 @@ class ShowroomAIChatbot:
 
     async def stream_chat_response(self, user_message: str, conversation_history: List[ConversationMessage] = None, include_mcp: bool = True, page_context: str = None) -> AsyncGenerator[str, None]:
         """Generate streaming chat response with RAG and optional page context"""
+        # Initialize response content tracking for attribution detection
+        self._llm_response_content = ""
+        
         try:
             logger.info("=== CHAT REQUEST START ===")
             logger.info(f"User Message: {user_message}")
@@ -1323,19 +1326,32 @@ class ShowroomAIChatbot:
 
             await asyncio.sleep(0.1)
 
-            # Step 5: Add source attribution at the end
+            # Step 5: Add source attribution at the end (only if LLM didn't already include it)
             logger.info(f"=== SOURCE ATTRIBUTION DEBUG ===")
             logger.info(f"Sources available: {len(sources)}")
-            source_attribution = self._generate_source_attribution(sources)
-            logger.info(f"Attribution generated: {bool(source_attribution)}")
-            logger.info(f"Attribution content: {repr(source_attribution)}")
-            if source_attribution:
-                logger.info("=== ADDING SOURCE ATTRIBUTION ===")
-                yield f"data: {json.dumps({'content': source_attribution})}\n\n"
-                # Add a small delay to ensure attribution is sent separately
-                await asyncio.sleep(0.1)
+            logger.info(f"LLM response content length: {len(self._llm_response_content)}")
+            logger.info(f"LLM response content preview: {self._llm_response_content[-200:] if len(self._llm_response_content) > 200 else self._llm_response_content}")
+            
+            # Check if the LLM already included attribution in its response
+            llm_included_attribution = (
+                'RELEVANT WORKSHOP LINKS:' in self._llm_response_content or 
+                'TECHDOC REFERENCES:' in self._llm_response_content
+            )
+            logger.info(f"LLM included attribution: {llm_included_attribution}")
+            
+            if llm_included_attribution:
+                logger.info("=== LLM ALREADY INCLUDED ATTRIBUTION - SKIPPING BACKEND ATTRIBUTION ===")
             else:
-                logger.warning("No source attribution was generated")
+                source_attribution = self._generate_source_attribution(sources)
+                logger.info(f"Attribution generated: {bool(source_attribution)}")
+                logger.info(f"Attribution content: {repr(source_attribution)}")
+                if source_attribution:
+                    logger.info("=== ADDING SOURCE ATTRIBUTION ===")
+                    yield f"data: {json.dumps({'content': source_attribution})}\n\n"
+                    # Add a small delay to ensure attribution is sent separately
+                    await asyncio.sleep(0.1)
+                else:
+                    logger.warning("No source attribution was generated")
 
             logger.info("=== CHAT REQUEST COMPLETED ===")
 
@@ -1465,6 +1481,8 @@ class ShowroomAIChatbot:
                                 delta = data["choices"][0].get("delta", {})
                                 if "content" in delta:
                                     content = delta["content"]
+                                    # Accumulate response content for attribution detection
+                                    self._llm_response_content += content
                                     yield f"data: {json.dumps({'content': content})}\n\n"
                         except json.JSONDecodeError as e:
                             logger.warning(f"Failed to parse SSE data: {data_str}, error: {e}")
@@ -1585,6 +1603,8 @@ class ShowroomAIChatbot:
                     # No tools called, stream the response
                     content = message.get("content", "")
                     logger.info(f"Direct response content: {content}")
+                    # Accumulate response content for attribution detection
+                    self._llm_response_content += content
                     yield f"data: {json.dumps({'content': content})}\n\n"
             else:
                 # Fall back to regular streaming
