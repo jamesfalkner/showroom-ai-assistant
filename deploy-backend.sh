@@ -233,7 +233,9 @@ create_secrets() {
         LLM_API_KEY=$(grep "llm_api_key:" .env.yaml | sed 's/.*llm_api_key: *"\([^"]*\)".*/\1/' | tr -d ' ')
         
         if [ -n "$LLM_API_KEY" ] && [ "$LLM_API_KEY" != "your-api-key-here" ]; then
-            log "Creating secret with API key from .env.yaml..."
+            # Show truncated API key for logging
+            local key_preview="${LLM_API_KEY:0:10}...${LLM_API_KEY: -10}"
+            log "Creating secret with API key from .env.yaml (${key_preview})..."
             $KUBE_CMD create secret generic ai-assistant-secrets \
                 --from-literal=LLM_API_KEY="$LLM_API_KEY" \
                 --namespace="$NAMESPACE" \

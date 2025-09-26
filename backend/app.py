@@ -1135,17 +1135,17 @@ class ShowroomAIChatbot:
         if not file_path:
             return ""
             
-        # Extract filename from path like "content/modules/ROOT/pages/module-01.adoc"
-        if '/pages/' in file_path and file_path.endswith('.adoc'):
-            # Get the filename without extension
-            filename = file_path.split('/')[-1].replace('.adoc', '')
+        # Extract filename from path like "content/modules/ROOT/pages/module-01.adoc" or absolute paths
+        if file_path.endswith('.adoc'):
+            # Get the filename without extension from the last part of the path
+            filename = Path(file_path).stem
             
             # Skip special files that don't generate HTML pages
             skip_files = ['ai-chatbot', 'nav', 'header', 'footer', 'theme', 'layout']
             if any(skip_file in filename for skip_file in skip_files):
                 return ""
             
-            # Convert to HTML URL
+            # Convert to HTML URL - use the actual filename from the adoc file
             return f"{filename}.html"
         
         return ""

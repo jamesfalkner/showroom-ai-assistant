@@ -248,6 +248,7 @@ copy_backend_files() {
     local backend_items=(
         "backend"
         "config"
+        "k8s"
         "Dockerfile"
         ".env.yaml.example"
         "deploy-backend.sh"
