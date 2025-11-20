@@ -1,17 +1,24 @@
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-assistant-backend
+  name: showroom-ai-assistant
   labels:
-    app: ai-assistant
-    component: backend
+    app: showroom-ai-assistant
 spec:
   type: ClusterIP
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
     protocol: TCP
-    name: http
+  - name: mcp
+    port: 3000
+    targetPort: 3000
+    protocol: TCP
+  - name: llama
+    port: 8321
+    targetPort: 8321
+    protocol: TCP
   selector:
-    app: ai-assistant
-    component: backend
+    app: showroom-ai-assistant

@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy backend files
+COPY backend/ /app/
+
+# Copy configuration
+COPY config/ /app/config/
+
+# Copy workshop content
+COPY content/ /app/content/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Environment variables
+ENV CONTENT_DIR=/app/content
+ENV PDF_DIR=/app/content/modules/ROOT/assets/techdocs
+ENV PORT=8080
+
+# Expose port
+EXPOSE 8080
+
+RUN chmod -R a+rX /app
+
+# Run the application
+CMD ["python", "app.py"]

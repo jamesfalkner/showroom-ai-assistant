@@ -1,20 +1,19 @@
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ai-assistant
+  name: showroom-ai-assistant
   labels:
-    app: ai-assistant
-    component: backend
+    app: showroom-ai-assistant
 automountServiceAccountToken: true
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: ai-assistant-reader
+  name: showroom-ai-assistant
   labels:
-    app: ai-assistant
-    component: rbac
+    app: showroom-ai-assistant
 rules:
 # Allow reading most resources for troubleshooting and assistance
 - apiGroups: [""]
@@ -81,41 +80,14 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ai-assistant-reader-binding
+  name: showroom-ai-assistant
   labels:
-    app: ai-assistant
-    component: rbac
+    app: showroom-ai-assistant
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: showroom-ai-assistant
 subjects:
 - kind: ServiceAccount
-  name: ai-assistant
+  name: showroom-ai-assistant
   namespace: NAMESPACE_PLACEHOLDER
-roleRef:
-  kind: ClusterRole
-  name: ai-assistant-reader
-  apiGroup: rbac.authorization.k8s.io
-
----
-# Optional: More permissive role for workshop environments
-# Uncomment this if you want the AI to help with resource creation/modification
-# apiVersion: rbac.authorization.k8s.io/v1
-# kind: ClusterRole
-# metadata:
-#   name: ai-assistant-workshop
-#   labels:
-#     app: ai-assistant
-#     component: rbac
-# rules:
-# # Everything from the reader role
-# - apiGroups: [""]
-#   resources: ["*"]
-#   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-# - apiGroups: ["apps", "extensions"]
-#   resources: ["*"] 
-#   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-# # Restrict some dangerous operations
-# - apiGroups: [""]
-#   resources: ["nodes"]
-#   verbs: ["get", "list", "watch"]  # No node modifications
-# - apiGroups: ["rbac.authorization.k8s.io"]
-#   resources: ["*"]
-#   verbs: ["get", "list", "watch"]  # No RBAC modifications

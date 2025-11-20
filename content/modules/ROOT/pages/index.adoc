@@ -5,7 +5,8 @@ You are both free to change its value and if you prefer to use a different var n
 
 image::rhel-logo-black.jpg[rhel-logo-black,55%,55%]
 
-include::ai-chatbot.adoc[]
+// Old chatbot implementation removed - now using footer-scripts.hbs widget
+// include::ai-chatbot.adoc[]
 
 == Variables
 

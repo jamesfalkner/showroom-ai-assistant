@@ -8,13 +8,27 @@ node_modules/
 www/
 .cache/
 
+# Frontend build artifacts
+frontend/out/
+frontend/.next/
+frontend/node_modules/
+
+# Dynamic files created during frontend build
+_next/
+
 # Ignore IDE and editor files
 .vscode/
 .idea/
+.claude/
 
 # Ignore logs and temporary files
 *.log
 *.tmp
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
 
 # Ignore environment-specific files
 .env

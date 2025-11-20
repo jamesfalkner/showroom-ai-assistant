@@ -1,99 +1,114 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ai-assistant-backend
+  name: showroom-ai-assistant
   labels:
-    app: ai-assistant
-    component: backend
+    app: showroom-ai-assistant
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ai-assistant
-      component: backend
+      app: showroom-ai-assistant
   template:
     metadata:
       labels:
-        app: ai-assistant
-        component: backend
+        app: showroom-ai-assistant
     spec:
-      serviceAccountName: ai-assistant
+      serviceAccountName: showroom-ai-assistant
       containers:
+      # Backend API Container
       - name: backend
         image: image-registry.openshift-image-registry.svc:5000/NAMESPACE_PLACEHOLDER/showroom-ai-assistant:latest
         imagePullPolicy: Always
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: false
-          runAsNonRoot: true
-          capabilities:
-            drop:
-            - ALL
         ports:
         - containerPort: 8080
           name: http
           protocol: TCP
-        
-        # Environment variables from Secret
-        envFrom:
-        - secretRef:
-            name: ai-assistant-secrets
-        
-        # Additional environment variables
         env:
-        - name: PYTHONUNBUFFERED
-          value: "1"
-        
-        # Volume mounts for configuration file
+        - name: PORT
+          value: "8080"
+        - name: ASSISTANT_CONFIG_PATH
+          value: "/app/config/assistant-config.yaml"
+        - name: CONTENT_DIR
+          value: "/app/content"
+        - name: PDF_DIR
+          value: "/app/content/modules/ROOT/assets/techdocs"
         volumeMounts:
-        - name: config-volume
+        - name: config
           mountPath: /app/config/assistant-config.yaml
           subPath: assistant-config.yaml
-          readOnly: true
-        
-        # Resource limits and requests
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
         resources:
           requests:
             memory: "512Mi"
             cpu: "250m"
           limits:
             memory: "1Gi"
+            cpu: "1000m"
+
+      # MCP Kubernetes Server Container
+      - name: mcp-server
+        image: docker.io/node:20
+        command:
+        - sh
+        - -c
+        - npx -y kubernetes-mcp-server@latest --port 3000
+        ports:
+        - containerPort: 3000
+          name: mcp
+          protocol: TCP
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
             cpu: "500m"
-        
-        # Health checks
-        livenessProbe:
-          httpGet:
-            path: /api/health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        
-        readinessProbe:
-          httpGet:
-            path: /api/health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        
-        # Startup probe for initial loading
-        startupProbe:
-          httpGet:
-            path: /api/health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 12  # Allow up to 2 minutes for startup
-      
+        env:
+          - name: HOME
+            value: /tmp
+          - name: NPM_CONFIG_CACHE
+            value: /tmp/.npm
+
+      # LlamaStack Container
+      - name: llamastack
+        image: docker.io/llamastack/distribution-starter:0.3.2
+        ports:
+        - containerPort: 8321
+          name: llama
+          protocol: TCP
+        envFrom:
+        - secretRef:
+            name: showroom-ai-assistant-secrets
+        volumeMounts:
+        - name: llamastack-data
+          mountPath: /.llama
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
       volumes:
-      # Configuration file from ConfigMap
-      - name: config-volume
+      - name: llamastack-data
+        persistentVolumeClaim:
+          claimName: showroom-ai-assistant-llamastack
+      - name: config
         configMap:
-          name: ai-assistant-config
-          items:
-          - key: assistant-config.yaml
-            path: assistant-config.yaml
+          name: showroom-ai-assistant-config
