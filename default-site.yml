@@ -24,6 +24,8 @@ antora:
   extensions:
     - require: ./content/lib/dev-mode.js
       enabled: true
+    - require: ./content/lib/ai-assistant-build.js
+      enabled: true
 
 output:
   dir: ./www
