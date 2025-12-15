@@ -7,6 +7,7 @@ node_modules/
 # Ignore build output
 www/
 .cache/
+rag-content/
 
 # Frontend build artifacts
 frontend/out/

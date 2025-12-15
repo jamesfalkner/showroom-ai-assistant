@@ -91,7 +91,8 @@ class Config:
         # Content directories
         # Default to local paths for development (relative to backend directory)
         # In production/Docker, these should be set via environment variables
-        self.CONTENT_DIR = os.getenv("CONTENT_DIR", "../content")
+        # Use RAG-optimized content with resolved AsciiDoc attributes
+        self.CONTENT_DIR = os.getenv("CONTENT_DIR", "../rag-content")
         self.PDF_DIR = os.getenv("PDF_DIR", "../content/modules/ROOT/assets/techdocs")
 
         # Content processing

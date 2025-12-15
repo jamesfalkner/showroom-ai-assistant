@@ -6,6 +6,7 @@ Loads documents and uploads them to LlamaStack vector store
 import logging
 import tempfile
 import re
+import json
 from pathlib import Path
 from typing import List
 from PyPDF2 import PdfReader
@@ -128,32 +129,79 @@ async def initialize_vector_store(client, content_dir: str, pdf_dir: str, min_ch
 
 
 def _load_asciidoc_content(content_path: Path, min_chunk_size: int) -> List[dict]:
-    """Load AsciiDoc files"""
+    """
+    Load RAG-optimized content files exported by Antora extension.
+    These files have resolved AsciiDoc attributes and metadata headers.
+    """
     documents = []
-    modules_dir = content_path / "modules" / "ROOT" / "pages"
 
-    if not modules_dir.exists():
-        return documents
+    # Check if this is the new RAG content directory (flat structure with .txt files)
+    # or the old content directory (modules/ROOT/pages structure with .adoc files)
+    txt_files = list(content_path.glob("*.txt"))
 
-    for adoc_file in modules_dir.glob("**/*.adoc"):
-        # Skip special files
-        if adoc_file.name in ['ai-chatbot.adoc', 'nav.adoc']:
-            continue
+    if txt_files:
+        # New RAG content format - files with metadata headers
+        logger.info(f"Loading RAG-optimized content from {content_path}")
+        for exported_file in txt_files:
+            # Skip special files
+            if exported_file.stem in ['attrs-page', 'ai-chatbot', 'nav']:
+                continue
 
-        try:
-            content = adoc_file.read_text(encoding='utf-8')
-            title = _extract_title(content, adoc_file.stem)
-            cleaned = _clean_asciidoc(content)
+            try:
+                content = exported_file.read_text(encoding='utf-8')
 
-            if len(cleaned.strip()) > min_chunk_size:
-                documents.append({
-                    'title': title,
-                    'content': cleaned,
-                    'file_path': str(adoc_file),
-                    'module': _extract_module(str(adoc_file))
-                })
-        except Exception as e:
-            logger.warning(f"Error loading {adoc_file}: {e}")
+                # Parse metadata and content
+                if content.startswith('---\nMETADATA:\n'):
+                    parts = content.split('---\n', 2)
+                    if len(parts) >= 3:
+                        metadata_json = parts[1].replace('METADATA:\n', '')
+                        metadata = json.loads(metadata_json)
+                        actual_content = parts[2].strip()
+
+                        # Clean AsciiDoc markup from the content
+                        cleaned_content = _clean_asciidoc(actual_content)
+
+                        if len(cleaned_content.strip()) > min_chunk_size:
+                            documents.append({
+                                'title': metadata.get('title', exported_file.stem),
+                                'content': cleaned_content,
+                                'file_path': metadata.get('originalPath', str(exported_file)),
+                                'module': f"{metadata.get('component', 'modules')} - {metadata.get('module', 'ROOT')}"
+                            })
+                else:
+                    logger.warning(f"File {exported_file} doesn't have expected metadata format")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error parsing metadata in {exported_file}: {e}")
+            except Exception as e:
+                logger.warning(f"Error loading {exported_file}: {e}")
+    else:
+        # Fallback to old format - raw .adoc files
+        logger.info(f"Loading raw AsciiDoc content from {content_path}")
+        modules_dir = content_path / "modules" / "ROOT" / "pages"
+
+        if not modules_dir.exists():
+            logger.warning(f"No content found at {content_path} or {modules_dir}")
+            return documents
+
+        for adoc_file in modules_dir.glob("**/*.adoc"):
+            # Skip special files
+            if adoc_file.name in ['ai-chatbot.adoc', 'nav.adoc', 'attrs-page.adoc']:
+                continue
+
+            try:
+                content = adoc_file.read_text(encoding='utf-8')
+                title = _extract_title(content, adoc_file.stem)
+                cleaned = _clean_asciidoc(content)
+
+                if len(cleaned.strip()) > min_chunk_size:
+                    documents.append({
+                        'title': title,
+                        'content': cleaned,
+                        'file_path': str(adoc_file),
+                        'module': _extract_module(str(adoc_file))
+                    })
+            except Exception as e:
+                logger.warning(f"Error loading {adoc_file}: {e}")
 
     return documents
 

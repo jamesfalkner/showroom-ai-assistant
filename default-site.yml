@@ -26,6 +26,9 @@ antora:
       enabled: true
     - require: ./content/lib/ai-assistant-build.js
       enabled: true
+    - require: ./content/lib/rag-export.js
+      enabled: true
+      outputDir: ./rag-content
 
 output:
   dir: ./www

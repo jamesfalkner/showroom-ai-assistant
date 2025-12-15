@@ -9,14 +9,19 @@ COPY backend/ /app/
 # Copy configuration
 COPY config/ /app/config/
 
-# Copy workshop content
-COPY content/ /app/content/
+# Copy RAG-optimized content (with resolved attributes)
+COPY rag-content/ /app/rag-content/
+
+# Copy techdocs PDFs (keep original structure for PDF_DIR)
+COPY content/modules/ROOT/assets/techdocs/ /app/content/modules/ROOT/assets/techdocs/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Environment variables
-ENV CONTENT_DIR=/app/content
+# Use RAG-optimized content with resolved AsciiDoc attributes
+ENV CONTENT_DIR=/app/rag-content
+# Keep using techdocs from original content location
 ENV PDF_DIR=/app/content/modules/ROOT/assets/techdocs
 ENV PORT=8080
 

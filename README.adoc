@@ -261,6 +261,24 @@ mcpServers:
       - "kubectl_get_events" # Cluster events
 ----
 
+== 🔨 Building RAG-Optimized Content
+
+Before deploying, you must build the RAG-optimized content. The Antora build process includes a special extension that exports workshop content with all AsciiDoc attributes resolved (like `{lab_name}`, `{ssh_user}`, `{guid}`, etc.), ensuring the AI sees the same content users see.
+
+[source,sh]
+----
+# Build the site and generate RAG content
+antora default-site.yml
+
+# This creates:
+# - www/ - The workshop HTML site
+# - rag-content/ - Processed content for RAG (with resolved attributes)
+----
+
+**Why this matters:** Raw AsciiDoc files contain variables like `{ssh_user}` that aren't substituted until build time. The RAG export extension intercepts the build process after attribute substitution, giving the AI access to the actual values users see (e.g., "devops" instead of "{ssh_user}").
+
+See `content/lib/RAG-EXPORT-README.md` for technical details on how this works.
+
 == 🚀 Deployment
 
 The AI assistant uses a two-service architecture:
