@@ -145,8 +145,9 @@ copy_file "$SOURCE_DIR/.env.yaml.example" "$TARGET_DIR/.env.yaml.example" ".env.
 # 7. Copy Dockerfile.backend
 copy_file "$SOURCE_DIR/Dockerfile.backend" "$TARGET_DIR/Dockerfile.backend" "Dockerfile.backend"
 
-# 8. Copy Antora extension
-copy_file "$SOURCE_DIR/content/lib/ai-assistant-build.js" "$TARGET_DIR/content/lib/ai-assistant-build.js" "Antora extension"
+# 8. Copy Antora extensions
+copy_file "$SOURCE_DIR/content/lib/ai-assistant-build.js" "$TARGET_DIR/content/lib/ai-assistant-build.js" "Antora extension: ai-assistant-build.js"
+copy_file "$SOURCE_DIR/content/lib/rag-export.js" "$TARGET_DIR/content/lib/rag-export.js" "Antora extension: rag-export.js"
 
 # 9. Copy supplemental-ui partials
 echo -e "${YELLOW}Copying supplemental-ui partials...${NC}"
@@ -222,6 +223,24 @@ else
   echo "  ai-assistant-build extension already exists, skipping..."
 fi
 
+# Add the rag-export extension if not already present
+RAG_EXTENSION_EXISTS=$(yq eval '.antora.extensions[] | select(.require == "./content/lib/rag-export.js")' "$TARGET_SITE_YML")
+
+if [[ -z "$RAG_EXTENSION_EXISTS" ]]; then
+  echo "  Adding rag-export extension..."
+
+  # Check if antora.extensions exists
+  if yq eval '.antora.extensions' "$TARGET_SITE_YML" | grep -q "null"; then
+    # Create the extensions array
+    yq eval -i '.antora.extensions = []' "$TARGET_SITE_YML"
+  fi
+
+  # Add the extension with outputDir configuration
+  yq eval -i '.antora.extensions += [{"require": "./content/lib/rag-export.js", "enabled": true, "outputDir": "./rag-content"}]' "$TARGET_SITE_YML"
+else
+  echo "  rag-export extension already exists, skipping..."
+fi
+
 echo -e "${GREEN}  ✓ default-site.yml updated${NC}"
 
 echo ""
@@ -230,7 +249,7 @@ echo ""
 echo -e "${GREEN}Summary of changes:${NC}"
 echo "  • Added backend, config, frontend, k8s, scripts directories"
 echo "  • Added .env.yaml.example and Dockerfile.backend"
-echo "  • Added Antora extension: content/lib/ai-assistant-build.js"
+echo "  • Added Antora extensions: ai-assistant-build.js, rag-export.js"
 echo "  • Created techdocs directory with sample files"
-echo "  • Updated default-site.yml with supplemental_files and extension"
+echo "  • Updated default-site.yml with supplemental_files and extensions"
 echo "  • Consult the README for next steps!"
