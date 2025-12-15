@@ -335,7 +335,7 @@ export default function ChatPage() {
                   )}
                 </MessageContent>
                 <MessageAvatar
-                  src={message.role === 'user' ? 'https://github.com/shadcn.png' : '/ai-assistant/redhat-logo.ico'}
+                  src={message.role === 'user' ? 'https://github.com/shadcn.png' : '/_/img/favicon.ico'}
                   name={message.role === 'user' ? 'User' : 'AI'}
                   className={message.role === 'assistant' ? 'size-8 ring-0' : undefined}
                 />
