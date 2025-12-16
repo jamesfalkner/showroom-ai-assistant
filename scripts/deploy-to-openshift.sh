@@ -88,7 +88,7 @@ echo ""
 
 # 5. Create RBAC (substituting namespace placeholder)
 echo -e "${YELLOW}5. Creating RBAC resources...${NC}"
-sed "s/NAMESPACE_PLACEHOLDER/$NAMESPACE/g" "$PROJECT_ROOT/k8s/rbac.yaml" | oc apply -f -
+sed "s/NAMESPACE_PLACEHOLDER/$NAMESPACE/g" "$PROJECT_ROOT/k8s/rbac.yaml" | oc apply -n "$NAMESPACE" -f -
 echo -e "${GREEN}✓ RBAC created${NC}"
 echo ""
 
@@ -112,15 +112,29 @@ echo ""
 
 # 9. Create Deployment (substituting namespace placeholder)
 echo -e "${YELLOW}9. Creating Deployment...${NC}"
-sed "s/NAMESPACE_PLACEHOLDER/$NAMESPACE/g" "$PROJECT_ROOT/k8s/deployment.yaml" | oc apply -f -
+sed "s/NAMESPACE_PLACEHOLDER/$NAMESPACE/g" "$PROJECT_ROOT/k8s/deployment.yaml" | oc apply -n "$NAMESPACE" -f -
 echo -e "${GREEN}✓ Deployment created${NC}"
 echo ""
 
-# 10. Start build
-echo -e "${YELLOW}10. Starting build...${NC}"
+# 10. Build RAG-optimized content
+echo -e "${YELLOW}10. Building RAG-optimized content with Antora...${NC}"
 cd "$PROJECT_ROOT"
+
+# Check if npx is available
+if ! command -v npx &> /dev/null; then
+    echo -e "${RED}Error: npx not found. Please install Node.js${NC}"
+    exit 1
+fi
+
+# Build the site to generate rag-content
+npx antora default-site.yml
+echo -e "${GREEN}✓ RAG content built${NC}"
+echo ""
+
+# 11. Start build
+echo -e "${YELLOW}11. Starting container build...${NC}"
 tmpdir="$(mktemp -d)"
-cp -r backend content config "$tmpdir"/
+cp -r backend content config rag-content "$tmpdir"/
 cp Dockerfile.backend "$tmpdir"/
 oc start-build showroom-ai-assistant-backend --from-dir="$tmpdir" --follow -n "$NAMESPACE"
 rm -rf "$tmpdir"
