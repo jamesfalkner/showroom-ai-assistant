@@ -65,21 +65,60 @@ function sourceToUrl(source: Source): string {
   return url
 }
 
+const STORAGE_KEY_MESSAGES = 'ai-assistant-messages'
+const STORAGE_KEY_SELECTED_AGENT = 'ai-assistant-selected-agent'
+
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
+  // Initialize messages from localStorage or default welcome message
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === 'undefined') return []
+
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_MESSAGES)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        // Convert timestamp strings back to Date objects
+        return parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date()
+        }))
+      }
+    } catch (error) {
+      console.error('Failed to load messages from localStorage:', error)
+    }
+
+    // Default welcome message
+    return [{
       id: nanoid(),
       content: "Hello! I'm your workshop AI assistant. I can help you with questions about the workshop content, troubleshooting, and guidance. What would you like to know?",
       role: 'assistant',
       timestamp: new Date()
-    }
-  ])
+    }]
+  })
 
   const [inputValue, setInputValue] = useState('')
   const [agents, setAgents] = useState<Agent[]>([])
-  const [selectedAgent, setSelectedAgent] = useState('auto')
+  const [exampleQuestions, setExampleQuestions] = useState<string[]>([])
+  const [selectedAgent, setSelectedAgent] = useState(() => {
+    if (typeof window === 'undefined') return 'auto'
+    return localStorage.getItem(STORAGE_KEY_SELECTED_AGENT) || 'auto'
+  })
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages))
+    }
+  }, [messages])
+
+  // Save selected agent to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_SELECTED_AGENT, selectedAgent)
+    }
+  }, [selectedAgent])
 
   // Dynamically construct backend URL based on current hostname
   // Pattern: <service>-<namespace>.<subdomain> -> showroom-ai-assistant-<namespace>.<subdomain>
@@ -122,22 +161,30 @@ export default function ChatPage() {
       .catch(err => console.error('Failed to fetch agents:', err))
   }, [backendUrl])
 
-  const handleSubmit: FormEventHandler<HTMLFormElement> = useCallback(
-    async (event) => {
-      event.preventDefault()
+  // Fetch configuration (example questions) on mount
+  useEffect(() => {
+    fetch(`${backendUrl}/api/config`)
+      .then(res => res.json())
+      .then(data => {
+        setExampleQuestions(data.example_questions || [])
+      })
+      .catch(err => console.error('Failed to fetch config:', err))
+  }, [backendUrl])
 
-      if (!inputValue.trim() || isStreaming) return
+  // Extracted chat submission logic
+  const submitMessage = useCallback(
+    async (messageText: string) => {
+      if (!messageText.trim() || isStreaming) return
 
       // Add user message
       const userMessage: ChatMessage = {
         id: nanoid(),
-        content: inputValue.trim(),
+        content: messageText.trim(),
         role: 'user',
         timestamp: new Date()
       }
 
       setMessages(prev => [...prev, userMessage])
-      setInputValue('')
       setIsStreaming(true)
 
       // Create empty assistant message for streaming
@@ -284,22 +331,42 @@ export default function ChatPage() {
         setStreamingMessageId(null)
       }
     },
-    [inputValue, isStreaming, messages, selectedAgent, backendUrl]
+    [isStreaming, messages, selectedAgent, backendUrl]
+  )
+
+  const handleSubmit: FormEventHandler<HTMLFormElement> = useCallback(
+    async (event) => {
+      event.preventDefault()
+      await submitMessage(inputValue)
+      setInputValue('')
+    },
+    [inputValue, submitMessage]
   )
 
   const handleReset = useCallback(() => {
-    setMessages([
+    const newMessages: ChatMessage[] = [
       {
         id: nanoid(),
         content: "Hello! I'm your workshop AI assistant. I can help you with questions about the workshop content, troubleshooting, and guidance. What would you like to know?",
-        role: 'assistant',
+        role: 'assistant' as const,
         timestamp: new Date()
       }
-    ])
+    ]
+    setMessages(newMessages)
     setInputValue('')
     setIsStreaming(false)
     setStreamingMessageId(null)
+
+    // Clear localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY_MESSAGES)
+    }
   }, [])
+
+  const handleExampleQuestionClick = useCallback((question: string) => {
+    if (isStreaming) return
+    submitMessage(question)
+  }, [isStreaming, submitMessage])
 
   // Find selected agent name for display
   const selectedAgentName = selectedAgent === 'auto'
@@ -334,6 +401,23 @@ export default function ChatPage() {
       {/* Conversation Area */}
       <Conversation className="flex-1 min-h-0">
         <ConversationContent className="space-y-4">
+          {/* Show example questions only when there's just the welcome message */}
+          {messages.length === 1 && exampleQuestions.length > 0 && (
+            <div className="flex flex-col gap-2 px-4">
+              <p className="text-xs text-muted-foreground">Try asking:</p>
+              {exampleQuestions.map((question, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleExampleQuestionClick(question)}
+                  disabled={isStreaming}
+                  className="text-left text-sm px-4 py-3 rounded-lg border border-border bg-muted/50 hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          )}
+
           {messages.map((message) => (
             <div key={message.id} className="space-y-3">
               <Message from={message.role}>
