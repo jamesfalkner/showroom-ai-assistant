@@ -51,17 +51,23 @@ type Agent = {
 function sourceToUrl(source: Source): string {
   const { url, content_type } = source
 
-  if (content_type === 'pdf-documentation') {
-    // PDF files - open in new tab
-    return url
+  // Both PDFs and workshop pages need to point to the showroom (not AI assistant)
+  // Pattern: showroom-ai-assistant-<namespace>.<subdomain> -> showroom-<namespace>.<subdomain>
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+
+    // For localhost, just use relative URL
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return url
+    }
+
+    // For OpenShift/production: replace 'showroom-ai-assistant' with 'showroom'
+    const showroomHostname = hostname.replace('showroom-ai-assistant-', 'showroom-')
+    const showroomUrl = `${window.location.protocol}//${showroomHostname}${url}`
+    return showroomUrl
   }
 
-  // Workshop pages - convert .adoc to .html
-  if (url.endsWith('.adoc')) {
-    const filename = url.split('/').pop()?.replace('.adoc', '.html') || ''
-    return `/modules/${filename}`
-  }
-
+  // Fallback for SSR
   return url
 }
 
@@ -401,24 +407,7 @@ export default function ChatPage() {
       {/* Conversation Area */}
       <Conversation className="flex-1 min-h-0">
         <ConversationContent className="space-y-4">
-          {/* Show example questions only when there's just the welcome message */}
-          {messages.length === 1 && exampleQuestions.length > 0 && (
-            <div className="flex flex-col gap-2 px-4">
-              <p className="text-xs text-muted-foreground">Try asking:</p>
-              {exampleQuestions.map((question, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleExampleQuestionClick(question)}
-                  disabled={isStreaming}
-                  className="text-left text-sm px-4 py-3 rounded-lg border border-border bg-muted/50 hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {question}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {messages.map((message) => (
+          {messages.map((message, messageIdx) => (
             <div key={message.id} className="space-y-3">
               <Message from={message.role}>
                 <MessageContent>
@@ -430,6 +419,26 @@ export default function ChatPage() {
                   ) : (
                     <>
                       <MarkdownRenderer>{message.content}</MarkdownRenderer>
+
+                      {/* Show example questions below the first message */}
+                      {messageIdx === 0 && messages.length === 1 && exampleQuestions.length > 0 && (
+                        <div className="mt-4 flex flex-col gap-1">
+                          {exampleQuestions.map((question, idx) => {
+                            const emoji = idx === 0 ? '🚀' : '📚'
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => handleExampleQuestionClick(question)}
+                                disabled={isStreaming}
+                                className="text-left text-sm text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {emoji} {question}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
                       {message.sources && message.sources.length > 0 && (
                         <Sources className="mt-4">
                           <SourcesTrigger count={message.sources.length} />
